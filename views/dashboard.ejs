@@ -6,15 +6,15 @@
       <h1>Sveiks, <%= user.username %></h1>
       <span class="stamp"><%= roleNames[user.role] %></span>
     </header>
-    <section class="crate">
-      <h2>Tava piekļuve</h2>
-      <ul class="manifest">
+
+    <div class="home">
+      <section class="tiles">
+        <h2>Ātrās darbības</h2>
         <% menu.forEach(function(m){ %>
-          <li><a href="<%= m.path %>"><%= m.label %></a></li>
+          <a class="tile" href="<%= m.path %>"><%= m.label %></a>
         <% }) %>
-      </ul>
-      <p class="note">Pārējās sadaļas tev ir slēgtas. Mēģinājums tām piekļūt tiks bloķēts.</p>
-    </section>
+      </section>
+    </div>
   </main>
 </body>
 </html>
