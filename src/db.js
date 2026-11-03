@@ -28,6 +28,21 @@ async function init() {
       created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS products (
+      id          INT AUTO_INCREMENT PRIMARY KEY,
+      sku         VARCHAR(32)   NOT NULL UNIQUE,
+      name        VARCHAR(100)  NOT NULL,
+      category    VARCHAR(50)   NULL,
+      quantity    INT UNSIGNED  NOT NULL DEFAULT 0,
+      price       DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+      description VARCHAR(500)  NULL,
+      created_by  INT NULL,
+      created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_products_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 }
 
 module.exports = { pool, init, config };
