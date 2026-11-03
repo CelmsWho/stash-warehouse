@@ -1,0 +1,12 @@
+<%- include('partials/head', { title: 'Aizliegts' }) %>
+<body class="wall">
+  <main class="door">
+    <div class="tape"></div>
+    <div class="slip">
+      <h1 class="deny"><%= typeof code !== 'undefined' ? code : 403 %></h1>
+      <p><%= message %></p>
+      <a class="btn" href="/">Atpakaļ uz sākumu</a>
+    </div>
+  </main>
+</body>
+</html>
