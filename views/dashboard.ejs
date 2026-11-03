@@ -1,0 +1,20 @@
+<%- include('partials/head', { title: 'Sākums' }) %>
+<body class="app">
+  <%- include('partials/sidebar') %>
+  <main class="main">
+    <header class="page-head">
+      <h1>Sveiks, <%= user.username %></h1>
+      <span class="stamp"><%= roleNames[user.role] %></span>
+    </header>
+    <section class="crate">
+      <h2>Tava piekļuve</h2>
+      <ul class="manifest">
+        <% menu.forEach(function(m){ %>
+          <li><a href="<%= m.path %>"><%= m.label %></a></li>
+        <% }) %>
+      </ul>
+      <p class="note">Pārējās sadaļas tev ir slēgtas. Mēģinājums tām piekļūt tiks bloķēts.</p>
+    </section>
+  </main>
+</body>
+</html>
