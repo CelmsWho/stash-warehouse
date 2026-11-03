@@ -52,6 +52,7 @@ app.use(locals);
 app.use((req, res, next) => { res.locals.roleNames = roleNames; next(); });
 
 app.use(require('./routes/auth'));
+app.use(require('./routes/products'));
 app.use(require('./routes/pages'));
 
 app.use((req, res) =>
