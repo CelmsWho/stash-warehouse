@@ -2,7 +2,7 @@
   const me = await initPage();
   if (!me) return;
 
-  document.getElementById('welcome').textContent = 'Sveiks, ' + me.user.username;
+  document.getElementById('welcome').textContent = me.user.welcome;
   document.getElementById('roleStamp').textContent = me.user.roleName;
 
   const tiles = document.getElementById('tiles');

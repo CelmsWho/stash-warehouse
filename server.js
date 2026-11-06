@@ -27,7 +27,7 @@ const roleNames = {
 // Lapas, kas vēl nav gatavas, izmanto placeholder.html.
 const pages = [
   { path: '/produkti/jauns',  file: 'add-product.html', label: 'Pievienot produktu',  roles: ['admin'] },
-  { path: '/lietotaji/jauns', file: 'placeholder.html', label: 'Pievienot lietotāju', roles: ['admin'] },
+  { path: '/lietotaji/jauns', file: 'add-user.html',    label: 'Pievienot lietotāju', roles: ['admin'] },
   { path: '/lietotaji',       file: 'placeholder.html', label: 'Lietotāji',           roles: ['admin'] },
   { path: '/izvietot',        file: 'placeholder.html', label: 'Izvietot preces',     roles: ['sorter'] },
   { path: '/atskaites',       file: 'placeholder.html', label: 'Sagatavot atskaiti',  roles: ['sorter', 'worker'] },
@@ -45,6 +45,15 @@ function menuFor(role) {
   return (menuOrder[role] || [])
     .map((p) => pages.find((x) => x.path === p))
     .map(({ path: p, label }) => ({ path: p, label }));
+}
+
+// ---------- Uzruna (vokatīvs) ----------
+// Vīriešu vārdiem, kas beidzas ar -s vai -š, noņem pēdējo burtu:
+// Jānis -> Jāni, Edgars -> Edgar, Mārtiņš -> Mārtiņ, Matīss -> Matīs.
+// Sieviešu vārdi (Anna, Inese) paliek nemainīti.
+function vocative(name, gender) {
+  if (gender !== 'male') return name;
+  return name.replace(/[\p{L}]+/gu, (w) => (w.length > 2 && /[sš]$/i.test(w) ? w.slice(0, -1) : w));
 }
 
 // ---------- Aizsargi ----------
@@ -164,7 +173,7 @@ app.post(
     try {
       // Parametrizēts vaicājums (aizsardzība pret SQL injekcijām)
       const [rows] = await pool.execute(
-        'SELECT id, username, password_hash, role FROM users WHERE username = ?',
+        'SELECT id, username, first_name, gender, password_hash, role FROM users WHERE username = ?',
         [req.body.username]
       );
       const row = rows[0];
@@ -174,7 +183,10 @@ app.post(
       // Jauna sesija pēc pieteikšanās (aizsardzība pret session fixation)
       req.session.regenerate((err) => {
         if (err) return res.status(500).json({ error: 'Neizdevās izveidot sesiju.' });
-        req.session.user = { id: row.id, username: row.username, role: row.role };
+        req.session.user = {
+          id: row.id, username: row.username,
+          firstName: row.first_name, gender: row.gender, role: row.role,
+        };
         res.json({ ok: true });
       });
     } catch (err) {
@@ -194,7 +206,16 @@ app.post('/api/logout', apiGuard(), verifyCsrf, (req, res) => {
 app.get('/api/me', apiGuard(), (req, res) => {
   const u = req.session.user;
   res.json({
-    user: { id: u.id, username: u.username, role: u.role, roleName: roleNames[u.role] },
+    user: {
+      id: u.id,
+      username: u.username,
+      firstName: u.firstName || u.username,
+      gender: u.gender,
+      greeting: u.gender === 'female' ? 'Sveika' : 'Sveiks', // uzruna pēc dzimuma
+      welcome: (u.gender === 'female' ? 'Sveika' : 'Sveiks') + ', ' + vocative(u.firstName || u.username, u.gender),
+      role: u.role,
+      roleName: roleNames[u.role],
+    },
     menu: menuFor(u.role),
   });
 });
@@ -239,6 +260,53 @@ app.post('/api/products', apiGuard('admin'), verifyCsrf, productRules, async (re
     }
     console.error('Produkta pievienošanas kļūda:', err.message);
     res.status(500).json({ error: 'Servera kļūda. Produkts netika saglabāts.' });
+  }
+});
+
+// ---------- API: lietotāji (tikai administrators) ----------
+const ROLES = ['admin', 'worker', 'sorter'];
+const GENDERS = ['male', 'female'];
+
+const userRules = [
+  body('username').trim()
+    .isLength({ min: 3, max: 32 }).withMessage('Lietotājvārdam jābūt 3-32 simbolus garam.').bail()
+    .matches(/^[A-Za-z0-9_.-]+$/).withMessage('Lietotājvārds drīkst saturēt tikai burtus, ciparus, punktu, - un _.'),
+  body('firstName').trim()
+    .isLength({ min: 2, max: 50 }).withMessage('Vārdam jābūt 2-50 simbolus garam.').bail()
+    .matches(/^\p{L}[\p{L} '’-]*$/u).withMessage('Vārds drīkst saturēt tikai burtus, atstarpes un defisi.'),
+  body('gender')
+    .isIn(GENDERS).withMessage('Izvēlieties dzimumu.'),
+  body('password')
+    .isString().isLength({ min: 8, max: 72 }).withMessage('Parolei jābūt 8-72 simbolus garai.').bail()
+    .custom((v) => Buffer.byteLength(v, 'utf8') <= 72).withMessage('Parole ir pārāk gara.').bail()
+    .matches(/[A-Za-z]/).withMessage('Parolē jābūt vismaz vienam burtam.').bail()
+    .matches(/\d/).withMessage('Parolē jābūt vismaz vienam ciparam.'),
+  body('role')
+    .isIn(ROLES).withMessage('Izvēlieties derīgu lomu.'),
+];
+
+app.post('/api/users', apiGuard('admin'), verifyCsrf, userRules, async (req, res) => {
+  const result = validationResult(req);
+  if (!result.isEmpty()) {
+    const errors = {};
+    for (const [field, e] of Object.entries(result.mapped())) errors[field] = e.msg;
+    return res.status(400).json({ errors });
+  }
+
+  const { username, firstName, gender, password, role } = req.body;
+  try {
+    const hash = await bcrypt.hash(password, 12); // parole tiek saglabāta tikai kā hash
+    await pool.execute(
+      'INSERT INTO users (username, first_name, gender, password_hash, role) VALUES (?, ?, ?, ?, ?)',
+      [username, firstName, gender, hash, role]
+    );
+    res.status(201).json({ ok: true, username });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ errors: { username: 'Šis lietotājvārds jau ir aizņemts.' } });
+    }
+    console.error('Lietotāja izveides kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda. Lietotājs netika izveidots.' });
   }
 });
 
