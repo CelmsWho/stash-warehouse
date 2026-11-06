@@ -12,7 +12,8 @@ if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'nomaini-mani'
 }
 
 const app = express();
-app.set('view engine', 'ejs');
+app.engine('html', require('ejs').__express);
+app.set('view engine', 'html');
 app.set('views', path.join(__dirname, '..', 'views'));
 app.disable('x-powered-by');
 
