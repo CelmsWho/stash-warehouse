@@ -1,0 +1,518 @@
+:root {
+  --concrete: #1d1f1e;
+  --concrete-2: #272a28;
+  --bulb: #e3a72f;
+  --chalk: #ece7da;
+  --stamp: #b8322a;
+  --ink: #161616;
+  --line: #3a3d3b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: 'Archivo', system-ui, sans-serif;
+  color: var(--chalk);
+  background-color: var(--concrete);
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, .07) 50%, transparent 51%),
+    radial-gradient(1px 1px at 70% 60%, rgba(255, 255, 255, .05) 50%, transparent 51%),
+    radial-gradient(2px 2px at 45% 85%, rgba(0, 0, 0, .35) 50%, transparent 51%);
+  background-size: 90px 90px, 130px 130px, 170px 170px;
+}
+
+h1,
+h2,
+.brand span {
+  font-family: 'Big Shoulders Stencil', Impact, sans-serif;
+  letter-spacing: .04em;
+}
+
+.tape {
+  height: 14px;
+  background: repeating-linear-gradient(-45deg, var(--bulb) 0 16px, var(--ink) 16px 32px);
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--bulb);
+  outline-offset: 2px;
+}
+
+/* ---------- Ieeja ---------- */
+.wall {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background-image:
+    radial-gradient(ellipse 480px 360px at 50% 0%, rgba(227, 167, 47, .22), transparent 70%),
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, .07) 50%, transparent 51%),
+    radial-gradient(2px 2px at 45% 85%, rgba(0, 0, 0, .35) 50%, transparent 51%);
+  background-size: auto, 90px 90px, 170px 170px;
+}
+
+.door {
+  width: min(420px, 100%);
+  background: var(--concrete-2);
+  border: 2px solid var(--line);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, .5);
+}
+
+.plate {
+  padding: 28px 28px 8px;
+  text-align: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.brand svg {
+  width: 28px;
+  height: 28px;
+  color: var(--bulb);
+}
+
+.brand span {
+  font-size: 1.7rem;
+  font-weight: 900;
+}
+
+.brand.big {
+  justify-content: center;
+}
+
+.brand.big svg {
+  width: 48px;
+  height: 48px;
+}
+
+.brand.big span {
+  font-size: 3.4rem;
+  line-height: 1;
+}
+
+.sub {
+  margin: 10px 0 0;
+  font-family: 'Special Elite', monospace;
+  color: #b9b4a6;
+}
+
+.slip {
+  margin: 20px 28px 8px;
+  padding: 22px;
+  background: var(--chalk);
+  color: var(--ink);
+  transform: rotate(-.6deg);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, .35);
+}
+
+.slip label {
+  display: block;
+  margin: 12px 0 4px;
+  font-family: 'Special Elite', monospace;
+  font-size: .95rem;
+}
+
+.slip input {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 1rem;
+  background: #fffdf6;
+  color: var(--ink);
+  border: 2px solid var(--ink);
+  border-radius: 0;
+}
+
+.slip button,
+.btn {
+  display: inline-block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 12px;
+  font-family: 'Big Shoulders Stencil', Impact, sans-serif;
+  font-weight: 900;
+  font-size: 1.3rem;
+  letter-spacing: .08em;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  background: var(--ink);
+  color: var(--bulb);
+  border: 0;
+  border-radius: 0;
+}
+
+.slip button:hover,
+.btn:hover {
+  background: var(--bulb);
+  color: var(--ink);
+}
+
+.alert {
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  font-weight: 600;
+  background: #f6dcd9;
+  color: #6d1510;
+  border-left: 6px solid var(--stamp);
+}
+
+.foot {
+  margin: 0;
+  padding: 14px 28px 22px;
+  font-size: .8rem;
+  color: #8c887c;
+  text-align: center;
+}
+
+.deny {
+  font-size: 4.5rem;
+  margin: 0;
+  color: var(--stamp);
+  line-height: 1;
+}
+
+.slip .btn {
+  width: auto;
+  padding: 10px 18px;
+  font-size: 1.05rem;
+}
+
+/* ---------- Lietotne ---------- */
+.app {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+}
+
+.side {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #141615;
+  border-right: 2px solid var(--line);
+}
+
+.side .brand {
+  padding: 22px 22px 18px;
+}
+
+.side nav {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  flex: 1;
+}
+
+.side nav a {
+  padding: 12px 22px;
+  text-decoration: none;
+  color: #c9c4b6;
+  border-left: 5px solid transparent;
+}
+
+.side nav a:hover {
+  background: var(--concrete-2);
+  color: var(--chalk);
+}
+
+.side nav a.on {
+  border-left-color: var(--bulb);
+  background: var(--concrete-2);
+  color: var(--bulb);
+  font-weight: 600;
+}
+
+.out {
+  padding: 16px 22px 22px;
+  border-top: 1px solid var(--line);
+}
+
+.who {
+  font-family: 'Special Elite', monospace;
+  margin-bottom: 10px;
+}
+
+.who small {
+  display: block;
+  color: #8c887c;
+  font-family: 'Archivo', sans-serif;
+}
+
+.out button {
+  width: 100%;
+  padding: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  background: transparent;
+  color: var(--chalk);
+  border: 2px solid var(--line);
+  border-radius: 0;
+}
+
+.out button:hover {
+  border-color: var(--stamp);
+  color: #f2b3ae;
+}
+
+.main {
+  padding: 32px 40px;
+  max-width: 960px;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: 2.6rem;
+  font-weight: 900;
+}
+
+.stamp {
+  font-family: 'Special Elite', monospace;
+  color: var(--stamp);
+  border: 3px solid var(--stamp);
+  padding: 3px 12px;
+  transform: rotate(-3deg);
+}
+
+.crate {
+  background: var(--concrete-2);
+  border: 2px solid var(--line);
+  padding: 24px 28px;
+  margin-bottom: 20px;
+}
+
+.crate h2 {
+  margin: 0 0 12px;
+  font-size: 1.6rem;
+}
+
+.manifest {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: 'Special Elite', monospace;
+}
+
+.manifest li {
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.manifest a {
+  text-decoration: none;
+}
+
+.manifest a:hover {
+  color: var(--bulb);
+}
+
+.note {
+  margin: 16px 0 0;
+  color: #9a9588;
+}
+
+/* Sākumlapa */
+.home {
+  display: grid;
+  grid-template-columns: minmax(0, 520px);
+  gap: 20px;
+}
+
+.tiles {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.tiles h2 {
+  margin: 0 0 2px;
+  font-size: 1.6rem;
+}
+
+.tile {
+  display: block;
+  padding: 18px 20px;
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--concrete-2);
+  border: 2px solid var(--line);
+  border-left: 6px solid var(--bulb);
+}
+
+.tile:hover {
+  background: #2f3330;
+  color: var(--bulb);
+}
+
+.art {
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--concrete-2);
+  border: 2px solid var(--line);
+  background-image: radial-gradient(ellipse 360px 240px at 75% 0%, rgba(227, 167, 47, .18), transparent 70%);
+}
+
+.art svg {
+  width: 100%;
+  height: auto;
+  max-width: 440px;
+}
+
+
+/* Produkta forma */
+.add {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.form-card {
+  background: var(--concrete-2);
+  border: 2px solid var(--line);
+  padding: 24px 28px;
+}
+
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: 'Special Elite', monospace;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--chalk);
+  background: #111413;
+  border: 2px solid var(--line);
+  border-radius: 0;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: var(--bulb);
+  outline: none;
+}
+
+.field.bad input,
+.field.bad textarea {
+  border-color: var(--stamp);
+}
+
+.err {
+  margin: 6px 0 0;
+  color: #f0a39d;
+  font-size: .9rem;
+}
+
+.alert.ok {
+  background: #d8ecd9;
+  color: #173b1a;
+  border-left-color: #2f7d32;
+  margin-bottom: 16px;
+}
+
+.form-card .alert {
+  margin-bottom: 16px;
+}
+
+.submit {
+  width: 100%;
+  margin-top: 6px;
+  padding: 12px;
+  cursor: pointer;
+  font-family: 'Big Shoulders Stencil', Impact, sans-serif;
+  font-weight: 900;
+  font-size: 1.3rem;
+  letter-spacing: .08em;
+  background: var(--bulb);
+  color: var(--ink);
+  border: 0;
+  border-radius: 0;
+}
+
+.submit:hover {
+  background: #f1b94a;
+}
+
+@media (max-width: 720px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .side {
+    position: static;
+    height: auto;
+  }
+
+  .main {
+    padding: 24px 18px;
+  }
+
+  .home {
+    grid-template-columns: 1fr;
+  }
+
+  .add,
+  .row2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+
+/* Palīgklases */
+.hidden {
+  display: none !important;
+}
+
+.tiles .tile {
+  display: block;
+}

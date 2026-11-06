@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="lv">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ieeja | STASH</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap"
+      rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="wall">
+    <main class="door">
+      <div class="tape"></div>
+      <div class="plate">
+        <div class="brand big">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path
+              d="M3 29V13L16 4l13 9v16h-5V15L16 9.5 8 15v14z"
+              fill="currentColor" /><rect x="11" y="17" width="10" height="3"
+              fill="currentColor" /><rect x="11" y="22" width="10" height="3"
+              fill="currentColor" /></svg>
+          <span>STASH</span>
+        </div>
+        <p class="sub">Tikai saviem. Nosauc sevi.</p>
+      </div>
+
+      <form id="loginForm" class="slip" autocomplete="off">
+        <div id="loginError" class="alert hidden" role="alert"></div>
+
+        <label for="username">Lietotājvārds</label>
+        <input id="username" name="username" type="text" required minlength="3"
+          maxlength="32" pattern="[A-Za-z0-9_.\-]+" autofocus>
+
+        <label for="password">Parole</label>
+        <input id="password" name="password" type="password" required
+          minlength="8" maxlength="72" autocomplete="current-password">
+
+        <button type="submit">Ieiet</button>
+      </form>
+      <p class="foot">Nesankcionēta piekļuve tiek reģistrēta.</p>
+    </main>
+    <script src="/auth.js"></script>
+  </body>
+</html>
