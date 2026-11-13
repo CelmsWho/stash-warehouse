@@ -219,7 +219,12 @@
             if (res.ok) {
                 dialog.close();
                 await reloadAll();
-                showMsg('Izvietojums atjaunināts.', true);
+                showMsg(
+                    res.data.merged
+                        ? 'Izvietojums apvienots ar esošo ierakstu vietā ' + body.location.trim().toUpperCase() + '.'
+                        : 'Izvietojums atjaunināts.',
+                    true
+                );
             } else if (res.data.errors) {
                 showErrors(editForm, res.data.errors);
             } else {
