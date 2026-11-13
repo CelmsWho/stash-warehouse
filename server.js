@@ -31,7 +31,7 @@ const pages = [
   { path: '/lietotaji', file: 'users.html', label: 'Lietotāji', roles: ['admin'] },
   { path: '/lietotaji/rediget', file: 'edit-user.html', label: 'Rediģēt lietotāju', roles: ['admin'] },
   { path: '/izvietot', file: 'place.html', label: 'Izvietot preces', roles: ['sorter', 'admin'] },
-  { path: '/atskaites', file: 'placeholder.html', label: 'Sagatavot atskaiti', roles: ['sorter', 'worker'] },
+  { path: '/atskaites', file: 'reports.html', label: 'Sagatavot atskaiti', roles: ['sorter', 'worker', 'admin'] },
   { path: '/datu-ievade', file: 'placeholder.html', label: 'Datu ievade', roles: ['sorter'] },
   { path: '/pasutijumi', file: 'placeholder.html', label: 'Veikt pasūtījumu', roles: ['worker'] },
 ];
@@ -630,7 +630,7 @@ app.put('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, placeEditRules,
   const userId = req.session.user.id;
 
   try {
-    await withTx(async (conn) => {
+    const result = await withTx(async (conn) => {
       const [cur] = await conn.execute(
         'SELECT id, product_id, location, quantity FROM placements WHERE id = ? FOR UPDATE', [id]
       );
@@ -646,14 +646,32 @@ app.put('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, placeEditRules,
         throw new HttpError(400, { errors: { quantity: 'Šai precei var norādīt ne vairāk kā ' + room + ' vienības.' } });
       }
 
+      // Vai izvēlētajā vietā šī prece jau ir izvietota?
+      let target = null;
       if (location !== pl.location) {
         const [taken] = await conn.execute(
-          'SELECT id FROM placements WHERE product_id = ? AND location = ?', [pl.product_id, location]
+          'SELECT id, quantity FROM placements WHERE product_id = ? AND location = ? FOR UPDATE', [pl.product_id, location]
         );
-        if (taken[0]) throw new HttpError(409, { errors: { location: 'Šajā vietā šī prece jau ir izvietota.' } });
+        target = taken[0] || null;
       }
 
-      if (location === pl.location && quantity === pl.quantity) return; // nekas nav mainīts
+      if (location === pl.location && quantity === pl.quantity) return null; // nekas nav mainīts
+
+      if (target) {
+        // Apvieno ar esošo ierakstu (tāpat kā jaunu izvietojumu pievienojot tajā pašā vietā)
+        const merged = target.quantity + quantity;
+        await conn.execute('DELETE FROM placements WHERE id = ?', [id]);
+        await conn.execute('UPDATE placements SET quantity = ?, updated_by = ? WHERE id = ?', [merged, userId, target.id]);
+        await logPlacement(conn, {
+          productId: pl.product_id, action: 'remove',
+          oldLocation: pl.location, oldQuantity: pl.quantity, userId,
+        });
+        await logPlacement(conn, {
+          productId: pl.product_id, action: 'place', newLocation: location,
+          oldQuantity: target.quantity, newQuantity: merged, userId,
+        });
+        return { merged: true };
+      }
 
       await conn.execute('UPDATE placements SET location = ?, quantity = ?, updated_by = ? WHERE id = ?', [location, quantity, userId, id]);
       await logPlacement(conn, {
@@ -661,8 +679,9 @@ app.put('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, placeEditRules,
         oldLocation: pl.location, newLocation: location,
         oldQuantity: pl.quantity, newQuantity: quantity, userId,
       });
+      return { merged: false };
     });
-    res.json({ ok: true });
+    res.json({ ok: true, merged: !!(result && result.merged) });
   } catch (err) {
     sendError(res, err, 'Izvietojuma atjaunošanas kļūda:');
   }
@@ -689,6 +708,237 @@ app.delete('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, async (req, 
     res.json({ ok: true });
   } catch (err) {
     sendError(res, err, 'Izvietojuma dzēšanas kļūda:');
+  }
+});
+
+// ---------- API: atskaites ----------
+const REPORT_ROLES = ['sorter', 'worker', 'admin'];
+
+// Atskaišu veidi. Vērtības un cenas redz tikai darbinieks un administrators.
+const REPORTS = {
+  stock: {
+    label: 'Preču atlikumi un vērtība',
+    description: 'Visas preces ar daudzumu, cenu, kopējo vērtību un izvietoto/neizvietoto atlikumu.',
+    roles: ['worker', 'admin'],
+  },
+  placements: {
+    label: 'Preču izvietojums',
+    description: 'Kur noliktavā atrodas katra prece un cik vienību katrā vietā.',
+    roles: REPORT_ROLES,
+  },
+  unplaced: {
+    label: 'Neizvietotās preces',
+    description: 'Preces, kuras vēl nav pilnībā izvietotas plauktos.',
+    roles: REPORT_ROLES,
+  },
+  activity: {
+    label: 'Izvietojuma izmaiņu žurnāls',
+    description: 'Visas izvietojuma izmaiņas izvēlētajā periodā.',
+    roles: REPORT_ROLES,
+    dates: true,
+  },
+};
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const fmtDateTime = (d) => {
+  const x = new Date(d);
+  return `${pad2(x.getDate())}.${pad2(x.getMonth() + 1)}.${x.getFullYear()} ${pad2(x.getHours())}:${pad2(x.getMinutes())}`;
+};
+const isoLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const money = (n) => (Math.round(n * 100) / 100).toFixed(2);
+
+// Pārbauda datumu formā GGGG-MM-DD (un to, ka tāds datums tiešām eksistē)
+function validDate(v) {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const t = Date.parse(v + 'T00:00:00Z');
+  if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== v) return null;
+  return v;
+}
+
+async function loadStock() {
+  const [rows] = await pool.execute(
+    `SELECT p.sku, p.name, p.category, p.quantity, p.price, COALESCE(SUM(pl.quantity), 0) AS placed
+     FROM products p LEFT JOIN placements pl ON pl.product_id = p.id
+     GROUP BY p.id ORDER BY p.sku`
+  );
+  return rows.map((r) => {
+    const price = Number(r.price);
+    const placed = Number(r.placed);
+    return {
+      sku: r.sku, name: r.name, category: r.category || '', quantity: r.quantity,
+      price, value: price * r.quantity, placed, unplaced: r.quantity - placed,
+    };
+  });
+}
+
+const sumBy = (items, fn) => items.reduce((a, i) => a + fn(i), 0);
+
+const reportBuilders = {
+  async stock() {
+    const items = await loadStock();
+    return {
+      columns: [
+        { label: 'Artikula kods' }, { label: 'Nosaukums' }, { label: 'Kategorija' },
+        { label: 'Daudzums', num: true }, { label: 'Cena (EUR)', num: true }, { label: 'Vērtība (EUR)', num: true },
+        { label: 'Izvietots', num: true }, { label: 'Neizvietots', num: true },
+      ],
+      rows: items.map((i) => [i.sku, i.name, i.category, i.quantity, money(i.price), money(i.value), i.placed, i.unplaced]),
+      summary: [
+        { label: 'Preču veidi', value: items.length },
+        { label: 'Vienības kopā', value: sumBy(items, (i) => i.quantity) },
+        { label: 'Kopējā vērtība (EUR)', value: money(sumBy(items, (i) => Math.round(i.value * 100)) / 100) },
+      ],
+    };
+  },
+
+  async placements() {
+    const [rows] = await pool.execute(
+      `SELECT pl.location, p.sku, p.name, pl.quantity, pl.updated_at, u.username AS updated_by
+       FROM placements pl
+       JOIN products p ON p.id = pl.product_id
+       LEFT JOIN users u ON u.id = pl.updated_by
+       ORDER BY pl.location, p.sku`
+    );
+    return {
+      columns: [
+        { label: 'Vieta' }, { label: 'Artikula kods' }, { label: 'Nosaukums' },
+        { label: 'Daudzums', num: true }, { label: 'Atjaunināts' }, { label: 'Atjaunināja' },
+      ],
+      rows: rows.map((r) => [r.location, r.sku, r.name, r.quantity, fmtDateTime(r.updated_at), r.updated_by || '']),
+      summary: [
+        { label: 'Izvietojumu ieraksti', value: rows.length },
+        { label: 'Aizņemtās vietas', value: new Set(rows.map((r) => r.location)).size },
+        { label: 'Izvietotās vienības', value: sumBy(rows, (r) => r.quantity) },
+      ],
+    };
+  },
+
+  async unplaced() {
+    const items = (await loadStock()).filter((i) => i.unplaced > 0);
+    return {
+      columns: [
+        { label: 'Artikula kods' }, { label: 'Nosaukums' }, { label: 'Kategorija' },
+        { label: 'Daudzums', num: true }, { label: 'Izvietots', num: true }, { label: 'Neizvietots', num: true },
+      ],
+      rows: items.map((i) => [i.sku, i.name, i.category, i.quantity, i.placed, i.unplaced]),
+      summary: [
+        { label: 'Preces, kas gaida izvietošanu', value: items.length },
+        { label: 'Neizvietotās vienības', value: sumBy(items, (i) => i.unplaced) },
+      ],
+    };
+  },
+
+  async activity(query) {
+    const today = new Date();
+    const to = query.to === undefined ? isoLocal(today) : validDate(query.to);
+    const from = query.from === undefined ? isoLocal(new Date(today.getTime() - 29 * 86400000)) : validDate(query.from);
+    if (!from || !to) throw new HttpError(400, { error: 'Nederīgs datums. Izmantojiet formātu GGGG-MM-DD.' });
+    if (from > to) throw new HttpError(400, { error: 'Sākuma datums nevar būt pēc beigu datuma.' });
+
+    // Beigu datums ir ieskaitīts, tāpēc meklējam līdz nākamās dienas sākumam
+    const toNext = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+
+    const LIMIT = 1000;
+    const [rows] = await pool.execute(
+      `SELECT l.created_at, u.username, p.sku, p.name, l.action,
+              l.old_location, l.new_location, l.old_quantity, l.new_quantity
+       FROM placement_log l
+       LEFT JOIN products p ON p.id = l.product_id
+       LEFT JOIN users u ON u.id = l.user_id
+       WHERE l.created_at >= ? AND l.created_at < ?
+       ORDER BY l.id DESC LIMIT ${LIMIT}`,
+      [from, toNext]
+    );
+
+    const actionLabel = (r) => {
+      if (r.action === 'place') return 'Izvietots';
+      if (r.action === 'remove') return 'Noņemts';
+      if (r.old_location !== r.new_location) {
+        return r.old_quantity !== r.new_quantity ? 'Pārvietots un mainīts daudzums' : 'Pārvietots';
+      }
+      return 'Mainīts daudzums';
+    };
+    const count = (a) => rows.filter((r) => r.action === a).length;
+
+    const summary = [
+      { label: 'Ieraksti periodā', value: rows.length },
+      { label: 'Izvietošanas', value: count('place') },
+      { label: 'Labojumi', value: count('update') },
+      { label: 'Noņemšanas', value: count('remove') },
+    ];
+    if (rows.length === LIMIT) summary.push({ label: 'Piezīme', value: 'Rādīti pēdējie ' + LIMIT });
+
+    return {
+      period: `${from} - ${to}`,
+      columns: [
+        { label: 'Laiks' }, { label: 'Lietotājs' }, { label: 'Prece' }, { label: 'Darbība' },
+        { label: 'Vecā vieta' }, { label: 'Jaunā vieta' },
+        { label: 'Vecais daudzums', num: true }, { label: 'Jaunais daudzums', num: true },
+      ],
+      rows: rows.map((r) => [
+        fmtDateTime(r.created_at), r.username || '(dzēsts lietotājs)',
+        r.sku ? `${r.sku} - ${r.name}` : '(dzēsta prece)', actionLabel(r),
+        r.old_location || '', r.new_location || '',
+        r.old_quantity === null ? '' : r.old_quantity, r.new_quantity === null ? '' : r.new_quantity,
+      ]),
+      summary,
+    };
+  },
+};
+
+// CSV: semikols kā atdalītājs (latviešu Excel), UTF-8 ar BOM; aizsardzība pret formulu injekciju
+function csvCell(v) {
+  if (typeof v === 'number') return String(v);
+  let s = v === null || v === undefined ? '' : String(v);
+  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return '"' + s.replace(/"/g, '""') + '"';
+}
+
+function toCsv(report) {
+  const lines = [report.columns.map((c) => csvCell(c.label)).join(';')];
+  report.rows.forEach((r) => lines.push(r.map(csvCell).join(';')));
+  return '\uFEFF' + lines.join('\r\n');
+}
+
+// Atskaišu veidi, kas pieejami pašreizējai lomai
+app.get('/api/reports', apiGuard(...REPORT_ROLES), (req, res) => {
+  const role = req.session.user.role;
+  const types = Object.entries(REPORTS)
+    .filter(([, def]) => def.roles.includes(role))
+    .map(([id, def]) => ({ id, label: def.label, description: def.description, dates: !!def.dates }));
+  res.json({ types });
+});
+
+// Atskaites sagatavošana (JSON skatīšanai vai CSV lejupielādei)
+app.get('/api/reports/:type', apiGuard(...REPORT_ROLES), async (req, res) => {
+  const type = req.params.type;
+  const def = Object.prototype.hasOwnProperty.call(REPORTS, type) ? REPORTS[type] : null;
+  if (!def) return res.status(404).json({ error: 'Atskaite nav atrasta.' });
+  if (!def.roles.includes(req.session.user.role)) {
+    return res.status(403).json({ error: 'Šī atskaite jums nav pieejama.' });
+  }
+
+  try {
+    const built = await reportBuilders[type](req.query);
+    const report = {
+      type, title: def.label,
+      generatedAt: fmtDateTime(new Date()), generatedBy: req.session.user.username,
+      ...built,
+    };
+
+    if (req.query.format === 'csv') {
+      const stamp = isoLocal(new Date()).replace(/-/g, '');
+      res.set({
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="atskaite-${type}-${stamp}.csv"`,
+      });
+      return res.send(toCsv(report));
+    }
+    res.json(report);
+  } catch (err) {
+    if (err instanceof HttpError) return res.status(err.status).json(err.payload);
+    console.error('Atskaites kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda. Atskaiti neizdevās sagatavot.' });
   }
 });
 
