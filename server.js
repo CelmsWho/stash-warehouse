@@ -28,7 +28,8 @@ const roleNames = {
 const pages = [
   { path: '/produkti/jauns',  file: 'add-product.html', label: 'Pievienot produktu',  roles: ['admin'] },
   { path: '/lietotaji/jauns', file: 'add-user.html',    label: 'Pievienot lietotāju', roles: ['admin'] },
-  { path: '/lietotaji',       file: 'placeholder.html', label: 'Lietotāji',           roles: ['admin'] },
+  { path: '/lietotaji',       file: 'users.html',       label: 'Lietotāji',           roles: ['admin'] },
+  { path: '/lietotaji/rediget', file: 'edit-user.html', label: 'Rediģēt lietotāju', roles: ['admin'] },
   { path: '/izvietot',        file: 'placeholder.html', label: 'Izvietot preces',     roles: ['sorter'] },
   { path: '/atskaites',       file: 'placeholder.html', label: 'Sagatavot atskaiti',  roles: ['sorter', 'worker'] },
   { path: '/datu-ievade',     file: 'placeholder.html', label: 'Datu ievade',         roles: ['sorter'] },
@@ -129,6 +130,30 @@ app.use(
     },
   })
 );
+
+// Katrā pieprasījumā pārbauda, vai lietotājs vēl eksistē, un atjauno viņa datus.
+// Tā dzēsts lietotājs tiek uzreiz izlogots, un lomas maiņa stājas spēkā uzreiz.
+app.use(async (req, res, next) => {
+  const u = req.session.user;
+  if (!u) return next();
+  try {
+    const [rows] = await pool.execute(
+      'SELECT username, first_name, gender, role FROM users WHERE id = ?',
+      [u.id]
+    );
+    if (!rows[0]) {
+      delete req.session.user;
+    } else {
+      u.username = rows[0].username;
+      u.firstName = rows[0].first_name;
+      u.gender = rows[0].gender;
+      u.role = rows[0].role;
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 app.use((req, res, next) => {
   if (!req.session.csrf) req.session.csrf = crypto.randomBytes(24).toString('hex');
@@ -267,31 +292,91 @@ app.post('/api/products', apiGuard('admin'), verifyCsrf, productRules, async (re
 const ROLES = ['admin', 'worker', 'sorter'];
 const GENDERS = ['male', 'female'];
 
-const userRules = [
-  body('username').trim()
-    .isLength({ min: 3, max: 32 }).withMessage('Lietotājvārdam jābūt 3-32 simbolus garam.').bail()
-    .matches(/^[A-Za-z0-9_.-]+$/).withMessage('Lietotājvārds drīkst saturēt tikai burtus, ciparus, punktu, - un _.'),
-  body('firstName').trim()
-    .isLength({ min: 2, max: 50 }).withMessage('Vārdam jābūt 2-50 simbolus garam.').bail()
-    .matches(/^\p{L}[\p{L} '’-]*$/u).withMessage('Vārds drīkst saturēt tikai burtus, atstarpes un defisi.'),
-  body('gender')
-    .isIn(GENDERS).withMessage('Izvēlieties dzimumu.'),
-  body('password')
+const usernameRule = () => body('username').trim()
+  .isLength({ min: 3, max: 32 }).withMessage('Lietotājvārdam jābūt 3-32 simbolus garam.').bail()
+  .matches(/^[A-Za-z0-9_.-]+$/).withMessage('Lietotājvārds drīkst saturēt tikai burtus, ciparus, punktu, - un _.');
+
+const firstNameRule = () => body('firstName').trim()
+  .isLength({ min: 2, max: 50 }).withMessage('Vārdam jābūt 2-50 simbolus garam.').bail()
+  .matches(/^\p{L}[\p{L} '’-]*$/u).withMessage('Vārds drīkst saturēt tikai burtus, atstarpes un defisi.');
+
+const genderRule = () => body('gender')
+  .isIn(GENDERS).withMessage('Izvēlieties dzimumu.');
+
+const roleRule = () => body('role')
+  .isIn(ROLES).withMessage('Izvēlieties derīgu lomu.');
+
+// Rediģējot parole ir neobligāta: tukšs lauks nozīmē "nemainīt"
+const passwordRule = (optional) => {
+  let chain = body('password');
+  if (optional) chain = chain.optional({ values: 'falsy' });
+  return chain
     .isString().isLength({ min: 8, max: 72 }).withMessage('Parolei jābūt 8-72 simbolus garai.').bail()
     .custom((v) => Buffer.byteLength(v, 'utf8') <= 72).withMessage('Parole ir pārāk gara.').bail()
     .matches(/[A-Za-z]/).withMessage('Parolē jābūt vismaz vienam burtam.').bail()
-    .matches(/\d/).withMessage('Parolē jābūt vismaz vienam ciparam.'),
-  body('role')
-    .isIn(ROLES).withMessage('Izvēlieties derīgu lomu.'),
-];
+    .matches(/\d/).withMessage('Parolē jābūt vismaz vienam ciparam.');
+};
 
-app.post('/api/users', apiGuard('admin'), verifyCsrf, userRules, async (req, res) => {
+const createRules = [usernameRule(), firstNameRule(), genderRule(), passwordRule(false), roleRule()];
+const updateRules = [usernameRule(), firstNameRule(), genderRule(), passwordRule(true), roleRule()];
+
+function validationErrors(req) {
   const result = validationResult(req);
-  if (!result.isEmpty()) {
-    const errors = {};
-    for (const [field, e] of Object.entries(result.mapped())) errors[field] = e.msg;
-    return res.status(400).json({ errors });
+  if (result.isEmpty()) return null;
+  const errors = {};
+  for (const [field, e] of Object.entries(result.mapped())) errors[field] = e.msg;
+  return errors;
+}
+
+function parseId(req) {
+  const id = Number(req.params.id);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function userDto(r) {
+  return {
+    id: r.id,
+    username: r.username,
+    firstName: r.first_name,
+    gender: r.gender,
+    genderName: r.gender === 'female' ? 'Sieviete' : 'Vīrietis',
+    role: r.role,
+    roleName: roleNames[r.role],
+    createdAt: r.created_at,
+  };
+}
+
+const USER_COLUMNS = 'id, username, first_name, gender, role, created_at';
+
+// Saraksts
+app.get('/api/users', apiGuard('admin'), async (req, res) => {
+  try {
+    const [rows] = await pool.execute(`SELECT ${USER_COLUMNS} FROM users ORDER BY id`);
+    res.json({ users: rows.map(userDto) });
+  } catch (err) {
+    console.error('Lietotāju saraksta kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda.' });
   }
+});
+
+// Viens lietotājs
+app.get('/api/users/:id', apiGuard('admin'), async (req, res) => {
+  const id = parseId(req);
+  if (!id) return res.status(400).json({ error: 'Nederīgs lietotāja identifikators.' });
+  try {
+    const [rows] = await pool.execute(`SELECT ${USER_COLUMNS} FROM users WHERE id = ?`, [id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Lietotājs nav atrasts.' });
+    res.json({ user: userDto(rows[0]) });
+  } catch (err) {
+    console.error('Lietotāja ielādes kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda.' });
+  }
+});
+
+// Izveide
+app.post('/api/users', apiGuard('admin'), verifyCsrf, createRules, async (req, res) => {
+  const errors = validationErrors(req);
+  if (errors) return res.status(400).json({ errors });
 
   const { username, firstName, gender, password, role } = req.body;
   try {
@@ -307,6 +392,63 @@ app.post('/api/users', apiGuard('admin'), verifyCsrf, userRules, async (req, res
     }
     console.error('Lietotāja izveides kļūda:', err.message);
     res.status(500).json({ error: 'Servera kļūda. Lietotājs netika izveidots.' });
+  }
+});
+
+// Rediģēšana
+app.put('/api/users/:id', apiGuard('admin'), verifyCsrf, updateRules, async (req, res) => {
+  const id = parseId(req);
+  if (!id) return res.status(400).json({ error: 'Nederīgs lietotāja identifikators.' });
+
+  const errors = validationErrors(req);
+  if (errors) return res.status(400).json({ errors });
+
+  const { username, firstName, gender, password, role } = req.body;
+
+  // Administrators nevar mainīt savu lomu, lai nevarētu nejauši pazaudēt piekļuvi
+  if (id === req.session.user.id && role !== req.session.user.role) {
+    return res.status(400).json({ errors: { role: 'Savu lomu mainīt nevar.' } });
+  }
+
+  try {
+    const [exist] = await pool.execute('SELECT id FROM users WHERE id = ?', [id]);
+    if (!exist[0]) return res.status(404).json({ error: 'Lietotājs nav atrasts.' });
+
+    if (password) {
+      const hash = await bcrypt.hash(password, 12);
+      await pool.execute(
+        'UPDATE users SET username = ?, first_name = ?, gender = ?, role = ?, password_hash = ? WHERE id = ?',
+        [username, firstName, gender, role, hash, id]
+      );
+    } else {
+      await pool.execute(
+        'UPDATE users SET username = ?, first_name = ?, gender = ?, role = ? WHERE id = ?',
+        [username, firstName, gender, role, id]
+      );
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ errors: { username: 'Šis lietotājvārds jau ir aizņemts.' } });
+    }
+    console.error('Lietotāja atjaunošanas kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda. Izmaiņas netika saglabātas.' });
+  }
+});
+
+// Dzēšana
+app.delete('/api/users/:id', apiGuard('admin'), verifyCsrf, async (req, res) => {
+  const id = parseId(req);
+  if (!id) return res.status(400).json({ error: 'Nederīgs lietotāja identifikators.' });
+  if (id === req.session.user.id) return res.status(400).json({ error: 'Savu kontu dzēst nevar.' });
+
+  try {
+    const [r] = await pool.execute('DELETE FROM users WHERE id = ?', [id]);
+    if (r.affectedRows === 0) return res.status(404).json({ error: 'Lietotājs nav atrasts.' });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Lietotāja dzēšanas kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda. Lietotājs netika dzēsts.' });
   }
 });
 
