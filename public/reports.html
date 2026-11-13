@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="lv">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sagatavot atskaiti | STASH</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="app">
+    <aside id="sidebar"></aside>
+    <main class="main wide">
+      <header class="page-head no-print"><h1>Sagatavot atskaiti</h1></header>
+
+      <div id="msg" class="alert hidden no-print" role="status"></div>
+
+      <section class="crate no-print">
+        <form id="reportForm" class="report-form" autocomplete="off">
+          <div class="field">
+            <label for="type">Atskaites veids</label>
+            <select id="type" name="type" required></select>
+            <p class="hint" id="typeHint"></p>
+          </div>
+          <div class="field hidden" id="fromWrap">
+            <label for="from">No</label>
+            <input id="from" name="from" type="date" />
+          </div>
+          <div class="field hidden" id="toWrap">
+            <label for="to">Līdz</label>
+            <input id="to" name="to" type="date" />
+          </div>
+          <button type="submit" class="submit">Ģenerēt</button>
+        </form>
+      </section>
+
+      <section id="result" class="hidden">
+        <div class="result-head">
+          <div>
+            <h2 id="rTitle"></h2>
+            <p id="rMeta" class="hint"></p>
+          </div>
+          <div class="actions no-print">
+            <a id="csvLink" class="btn-sm" href="#">Lejupielādēt CSV</a>
+            <button type="button" id="printBtn" class="btn-sm">Drukāt</button>
+          </div>
+        </div>
+
+        <div id="rStats" class="stats"></div>
+
+        <div class="table-wrap">
+          <table class="table">
+            <thead id="rHead"></thead>
+            <tbody id="rBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="/auth.js"></script>
+    <script src="/reports.js"></script>
+  </body>
+</html>

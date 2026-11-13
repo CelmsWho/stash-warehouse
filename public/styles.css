@@ -690,3 +690,116 @@ a {
     margin-top: 0;
   }
 }
+
+/* Atskaites */
+.report-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.report-form .field {
+  flex: 1 1 220px;
+  margin-bottom: 0;
+}
+
+.report-form .submit {
+  width: auto;
+  margin-top: 28px;
+  padding: 10px 24px;
+}
+
+.result-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 28px 0 12px;
+}
+
+.result-head h2 {
+  margin: 0 0 4px;
+  font-size: 1.8rem;
+}
+
+.result-head .hint {
+  margin: 0;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stat {
+  min-width: 160px;
+  padding: 12px 16px;
+  background: var(--concrete-2);
+  border: 2px solid var(--line);
+  border-left: 6px solid var(--bulb);
+}
+
+.stat-value {
+  display: block;
+  font-family: 'Big Shoulders Stencil', Impact, sans-serif;
+  font-size: 1.9rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.stat-label {
+  color: #b3ae9f;
+  font-size: .85rem;
+}
+
+.table th.num,
+.table td.num {
+  text-align: right;
+}
+
+/* Drukāšana: gaišs fons, bez izvēlnes un pogām */
+@media print {
+
+  .side,
+  .no-print {
+    display: none !important;
+  }
+
+  .app {
+    display: block;
+  }
+
+  body {
+    background: #fff !important;
+    background-image: none !important;
+    color: #000 !important;
+  }
+
+  .main {
+    max-width: none;
+    padding: 0;
+  }
+
+  .table,
+  .table th,
+  .table td {
+    background: #fff;
+    color: #000;
+    border-color: #999;
+  }
+
+  .stat {
+    background: #fff;
+    color: #000;
+    border-color: #999;
+  }
+
+  .stat-label,
+  .hint {
+    color: #333;
+  }
+}
