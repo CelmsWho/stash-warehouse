@@ -516,3 +516,116 @@ a {
 .tiles .tile {
   display: block;
 }
+
+/* Lietotāja forma */
+.form-narrow {
+  max-width: 560px;
+}
+
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--chalk);
+  background: #111413;
+  border: 2px solid var(--line);
+  border-radius: 0;
+}
+
+.field select:focus {
+  border-color: var(--bulb);
+  outline: none;
+}
+
+.field.bad select {
+  border-color: var(--stamp);
+}
+
+.hint {
+  margin: 6px 0 0;
+  color: #9a9588;
+  font-size: .85rem;
+}
+
+/* Lietotāju tabula un mazās pogas */
+.main.wide {
+  max-width: 1100px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--concrete-2);
+  border: 2px solid var(--line);
+}
+
+.table th,
+.table td {
+  padding: 12px 14px;
+  text-align: left;
+  border-bottom: 1px dashed var(--line);
+}
+
+.table th {
+  font-family: 'Special Elite', monospace;
+  font-weight: 400;
+  color: #b3ae9f;
+  border-bottom: 2px solid var(--line);
+}
+
+.table tr:last-child td {
+  border-bottom: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.btn-sm {
+  display: inline-block;
+  padding: 6px 12px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  color: var(--chalk);
+  background: transparent;
+  border: 2px solid var(--line);
+  border-radius: 0;
+}
+
+.btn-sm:hover {
+  border-color: var(--bulb);
+  color: var(--bulb);
+}
+
+.btn-sm.danger:hover {
+  border-color: var(--stamp);
+  color: #f2b3ae;
+}
+
+.btn-sm:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.btn-sm:disabled:hover {
+  border-color: var(--line);
+  color: var(--chalk);
+}
+
+.you {
+  margin-left: 8px;
+  color: var(--bulb);
+  font-size: .85rem;
+}
+
+.alert.form-narrow {
+  margin-bottom: 16px;
+}

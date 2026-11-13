@@ -1,19 +1,39 @@
 # STASH - noliktavas vadības sistēma
 
-Statiski HTML faili (`public/`), klienta JavaScript un Node.js + Express API (`server.js`) ar MySQL.
+Statiski HTML faili, klienta JavaScript un Node.js + Express API ar MySQL.
 
-## Struktūra
-```
-server.js        Express serveris, API un lapu aizsardzība pēc lomām
-db.js            MySQL savienojums un tabulas
-seed.js          Izveido datubāzi un trīs testa kontus
-public/
-  login.html       dashboard.html      add-product.html
-  placeholder.html forbidden.html      404.html
-  auth.js          kopīgās funkcijas, sānjosla, pieteikšanās
-  dashboard.js     add-product.js      placeholder.js
-  styles.css
-```
+## Ko dara katrs fails
+
+### Serveris (projekta sakne)
+| Fails | Ko dara |
+|---|---|
+| `server.js` | Galvenais serveris. Satur visus API (pieteikšanās, lietotāji, produkti), pārbauda lomas un atdod HTML lapas tikai tiem, kam tās atļautas. |
+| `db.js` | Savienojums ar MySQL un tabulu izveide (`users`, `products`). |
+| `seed.js` | Vienreiz palaižams skripts: izveido datubāzi un trīs testa kontus. |
+| `package.json` | Saraksts ar izmantotajām pakotnēm un komandām (`npm start`, `npm run seed`). |
+| `.env` | Jūsu slepenie iestatījumi (MySQL parole, SESSION_SECRET). Netiek likts GitHub. |
+| `.env.example` | Tukšs `.env` paraugs, kas drīkst nonākt GitHub. |
+| `.gitignore` | Saraksts ar failiem, ko Git neņem vērā (`.env`, `node_modules`). |
+
+### Lapas (`public/`)
+| Fails | Ko dara |
+|---|---|
+| `login.html` | Pieteikšanās lapa. |
+| `dashboard.html` | Sākumlapa pēc pieteikšanās ar ātrajām saitēm. |
+| `add-product.html` | Produkta pievienošanas forma (administrators). |
+| `add-user.html` | Lietotāja izveides forma (administrators). |
+| `placeholder.html` | Pagaidu lapa sadaļām, kas vēl nav gatavas. |
+| `forbidden.html` / `404.html` | Kļūdu lapas (nav piekļuves / lapa neeksistē). |
+| `styles.css` | Visu lapu izskats. |
+
+### Klienta skripti (`public/`)
+| Fails | Ko dara |
+|---|---|
+| `auth.js` | Kopīgs visām lapām: runā ar API, pārbauda pieteikšanos, uzzīmē sānjoslu un apstrādā pieteikšanās formu. |
+| `dashboard.js` | Uzzīmē sveicienu un ātrās saites sākumlapā. |
+| `add-product.js` | Nosūta produkta formu serverim un parāda kļūdas. |
+| `add-user.js` | Nosūta lietotāja formu serverim un parāda kļūdas. |
+| `placeholder.js` | Uzliek virsrakstu pagaidu lapai. |
 
 ## Palaišana
 ```

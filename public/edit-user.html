@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rediģēt lietotāju | STASH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="app">
+  <aside id="sidebar"></aside>
+  <main class="main">
+    <header class="page-head">
+      <h1>Rediģēt lietotāju</h1>
+      <a class="btn-sm" href="/lietotaji">Atpakaļ uz sarakstu</a>
+    </header>
+
+    <div id="formMsg" class="alert hidden form-narrow" role="status"></div>
+
+    <form id="editForm" class="form-card form-narrow hidden" autocomplete="off">
+      <div class="field" id="f-username">
+        <label for="username">Lietotājvārds</label>
+        <input id="username" name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\-]+">
+        <p class="err" data-err="username"></p>
+      </div>
+
+      <div class="field" id="f-firstName">
+        <label for="firstName">Vārds</label>
+        <input id="firstName" name="firstName" type="text" required minlength="2" maxlength="50">
+        <p class="err" data-err="firstName"></p>
+      </div>
+
+      <div class="field" id="f-gender">
+        <label for="gender">Dzimums</label>
+        <select id="gender" name="gender" required>
+          <option value="male">Vīrietis</option>
+          <option value="female">Sieviete</option>
+        </select>
+        <p class="err" data-err="gender"></p>
+      </div>
+
+      <div class="field" id="f-password">
+        <label for="password">Jauna parole</label>
+        <input id="password" name="password" type="password" minlength="8" maxlength="72" autocomplete="new-password">
+        <p class="hint">Atstājiet tukšu, ja paroli nevēlaties mainīt. Citādi vismaz 8 simboli, burts un cipars.</p>
+        <p class="err" data-err="password"></p>
+      </div>
+
+      <div class="field" id="f-role">
+        <label for="role">Loma</label>
+        <select id="role" name="role" required>
+          <option value="admin">Administrators</option>
+          <option value="worker">Noliktavas darbinieks</option>
+          <option value="sorter">Plauktu kārtotājs</option>
+        </select>
+        <p id="roleNote" class="hint hidden">Savu lomu mainīt nevar.</p>
+        <p class="err" data-err="role"></p>
+      </div>
+
+      <button type="submit" class="submit">Saglabāt izmaiņas</button>
+    </form>
+  </main>
+  <script src="/auth.js"></script>
+  <script src="/edit-user.js"></script>
+</body>
+</html>

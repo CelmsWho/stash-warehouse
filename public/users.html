@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lietotāji | STASH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="app">
+  <aside id="sidebar"></aside>
+  <main class="main wide">
+    <header class="page-head">
+      <h1>Lietotāji</h1>
+      <a class="btn-sm" href="/lietotaji/jauns">Pievienot lietotāju</a>
+    </header>
+
+    <div id="listMsg" class="alert hidden" role="status"></div>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Lietotājvārds</th>
+            <th>Vārds</th>
+            <th>Dzimums</th>
+            <th>Loma</th>
+            <th>Izveidots</th>
+            <th>Darbības</th>
+          </tr>
+        </thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="/auth.js"></script>
+  <script src="/users.js"></script>
+</body>
+</html>
