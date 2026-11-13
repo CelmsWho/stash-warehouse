@@ -32,7 +32,7 @@ const pages = [
   { path: '/lietotaji/rediget', file: 'edit-user.html', label: 'Rediģēt lietotāju', roles: ['admin'] },
   { path: '/izvietot', file: 'place.html', label: 'Izvietot preces', roles: ['sorter', 'admin'] },
   { path: '/atskaites', file: 'reports.html', label: 'Sagatavot atskaiti', roles: ['sorter', 'worker', 'admin'] },
-  { path: '/datu-ievade', file: 'placeholder.html', label: 'Datu ievade', roles: ['sorter'] },
+  { path: '/datu-ievade', file: 'data-entry.html', label: 'Datu ievade', roles: ['sorter', 'admin'] },
   { path: '/pasutijumi', file: 'placeholder.html', label: 'Veikt pasūtījumu', roles: ['worker'] },
 ];
 
@@ -528,20 +528,28 @@ const placeEditRules = [locationRule(), placeQuantityRule()];
 
 const PLACERS = ['sorter', 'admin'];
 
+// Izvietojuma stāvokļi (un to smagums: lielāks skaitlis = sliktāks)
+const CONDITIONS = { good: 'Labā stāvoklī', check: 'Jāpārbauda', damaged: 'Bojāts' };
+const CONDITION_RANK = { good: 0, check: 1, damaged: 2 };
+
 // Izvietojumu saraksts
 app.get('/api/placements', apiGuard(...PLACERS), async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      `SELECT pl.id, pl.product_id, p.sku, p.name, pl.location, pl.quantity, pl.updated_at, u.username AS updated_by
+      `SELECT pl.id, pl.product_id, p.sku, p.name, pl.location, pl.quantity, pl.updated_at, u.username AS updated_by,
+              pl.condition_status, pl.condition_note, pl.checked_at, c.username AS checked_by
        FROM placements pl
        JOIN products p ON p.id = pl.product_id
        LEFT JOIN users u ON u.id = pl.updated_by
+       LEFT JOIN users c ON c.id = pl.checked_by
        ORDER BY pl.location, p.sku`
     );
     res.json({
       placements: rows.map((r) => ({
         id: r.id, productId: r.product_id, sku: r.sku, name: r.name, location: r.location,
         quantity: r.quantity, updatedAt: r.updated_at, updatedBy: r.updated_by,
+        conditionStatus: r.condition_status, conditionNote: r.condition_note,
+        checkedAt: r.checked_at, checkedBy: r.checked_by,
       })),
     });
   } catch (err) {
@@ -632,7 +640,7 @@ app.put('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, placeEditRules,
   try {
     const result = await withTx(async (conn) => {
       const [cur] = await conn.execute(
-        'SELECT id, product_id, location, quantity FROM placements WHERE id = ? FOR UPDATE', [id]
+        'SELECT id, product_id, location, quantity, condition_status, condition_note FROM placements WHERE id = ? FOR UPDATE', [id]
       );
       if (!cur[0]) throw new HttpError(404, { error: 'Izvietojums nav atrasts.' });
       const pl = cur[0];
@@ -650,7 +658,7 @@ app.put('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, placeEditRules,
       let target = null;
       if (location !== pl.location) {
         const [taken] = await conn.execute(
-          'SELECT id, quantity FROM placements WHERE product_id = ? AND location = ? FOR UPDATE', [pl.product_id, location]
+          'SELECT id, quantity, condition_status FROM placements WHERE product_id = ? AND location = ? FOR UPDATE', [pl.product_id, location]
         );
         target = taken[0] || null;
       }
@@ -661,7 +669,15 @@ app.put('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, placeEditRules,
         // Apvieno ar esošo ierakstu (tāpat kā jaunu izvietojumu pievienojot tajā pašā vietā)
         const merged = target.quantity + quantity;
         await conn.execute('DELETE FROM placements WHERE id = ?', [id]);
-        await conn.execute('UPDATE placements SET quantity = ?, updated_by = ? WHERE id = ?', [merged, userId, target.id]);
+        if (CONDITION_RANK[pl.condition_status] > CONDITION_RANK[target.condition_status]) {
+          // Ja noņemamais ieraksts bija sliktākā stāvoklī, to saglabā (lai bojājums nepazustu)
+          await conn.execute(
+            'UPDATE placements SET quantity = ?, updated_by = ?, condition_status = ?, condition_note = ? WHERE id = ?',
+            [merged, userId, pl.condition_status, pl.condition_note, target.id]
+          );
+        } else {
+          await conn.execute('UPDATE placements SET quantity = ?, updated_by = ? WHERE id = ?', [merged, userId, target.id]);
+        }
         await logPlacement(conn, {
           productId: pl.product_id, action: 'remove',
           oldLocation: pl.location, oldQuantity: pl.quantity, userId,
@@ -711,6 +727,71 @@ app.delete('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, async (req, 
   }
 });
 
+// ---------- API: preču stāvoklis (datu ievade) ----------
+const conditionRules = [
+  body('placementId').trim().isInt({ min: 1 }).withMessage('Izvēlieties izvietojumu.').toInt(),
+  body('status').isIn(Object.keys(CONDITIONS)).withMessage('Izvēlieties stāvokli.'),
+  body('note').trim()
+    .isLength({ max: 200 }).withMessage('Piezīme nedrīkst būt garāka par 200 simboliem.').bail()
+    .custom((v, { req }) => req.body.status === 'good' || v.length > 0)
+    .withMessage('Norādiet piezīmi, kas ar preci noticis.'),
+];
+
+// Stāvokļa reģistrēšana: atjauno izvietojumu un pieraksta pārbaudi vēsturē
+app.post('/api/conditions', apiGuard(...PLACERS), verifyCsrf, conditionRules, async (req, res) => {
+  const errors = validationErrors(req);
+  if (errors) return res.status(400).json({ errors });
+
+  const { placementId, status, note } = req.body;
+  const userId = req.session.user.id;
+
+  try {
+    await withTx(async (conn) => {
+      const [cur] = await conn.execute(
+        'SELECT id, product_id, location FROM placements WHERE id = ? FOR UPDATE', [placementId]
+      );
+      if (!cur[0]) throw new HttpError(404, { errors: { placementId: 'Izvietojums nav atrasts.' } });
+
+      // updated_at = updated_at: stāvokļa pārbaude nemaina izvietojuma atjaunināšanas laiku
+      await conn.execute(
+        `UPDATE placements
+         SET condition_status = ?, condition_note = ?, checked_at = NOW(), checked_by = ?, updated_at = updated_at
+         WHERE id = ?`,
+        [status, note || null, userId, placementId]
+      );
+      await conn.execute(
+        'INSERT INTO condition_checks (product_id, location, status, note, user_id) VALUES (?, ?, ?, ?, ?)',
+        [cur[0].product_id, cur[0].location, status, note || null, userId]
+      );
+    });
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    sendError(res, err, 'Stāvokļa reģistrēšanas kļūda:');
+  }
+});
+
+// Pēdējās stāvokļa pārbaudes
+app.get('/api/condition-log', apiGuard(...PLACERS), async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT c.id, c.location, c.status, c.note, c.created_at, p.sku, p.name, u.username
+       FROM condition_checks c
+       LEFT JOIN products p ON p.id = c.product_id
+       LEFT JOIN users u ON u.id = c.user_id
+       ORDER BY c.id DESC LIMIT 30`
+    );
+    res.json({
+      log: rows.map((r) => ({
+        id: r.id, location: r.location, status: r.status, note: r.note, createdAt: r.created_at,
+        sku: r.sku, name: r.name, username: r.username,
+      })),
+    });
+  } catch (err) {
+    console.error('Pārbaužu vēstures kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda.' });
+  }
+});
+
 // ---------- API: atskaites ----------
 const REPORT_ROLES = ['sorter', 'worker', 'admin'];
 
@@ -724,6 +805,11 @@ const REPORTS = {
   placements: {
     label: 'Preču izvietojums',
     description: 'Kur noliktavā atrodas katra prece un cik vienību katrā vietā.',
+    roles: REPORT_ROLES,
+  },
+  condition: {
+    label: 'Preču stāvoklis',
+    description: 'Izvietoto preču stāvoklis (labs, jāpārbauda, bojāts) ar piezīmēm un pēdējās pārbaudes laiku.',
     roles: REPORT_ROLES,
   },
   unplaced: {
@@ -809,6 +895,36 @@ const reportBuilders = {
         { label: 'Izvietojumu ieraksti', value: rows.length },
         { label: 'Aizņemtās vietas', value: new Set(rows.map((r) => r.location)).size },
         { label: 'Izvietotās vienības', value: sumBy(rows, (r) => r.quantity) },
+      ],
+    };
+  },
+
+  async condition() {
+    const [rows] = await pool.execute(
+      `SELECT pl.location, p.sku, p.name, pl.quantity, pl.condition_status, pl.condition_note, pl.checked_at,
+              u.username AS checked_by
+       FROM placements pl
+       JOIN products p ON p.id = pl.product_id
+       LEFT JOIN users u ON u.id = pl.checked_by
+       ORDER BY pl.location, p.sku`
+    );
+    // Sliktākie stāvokļi saraksta sākumā
+    rows.sort((a, b) => CONDITION_RANK[b.condition_status] - CONDITION_RANK[a.condition_status]);
+    const units = (st) => sumBy(rows.filter((r) => r.condition_status === st), (r) => r.quantity);
+
+    return {
+      columns: [
+        { label: 'Vieta' }, { label: 'Artikula kods' }, { label: 'Nosaukums' }, { label: 'Daudzums', num: true },
+        { label: 'Stāvoklis' }, { label: 'Piezīme' }, { label: 'Pārbaudīts' }, { label: 'Pārbaudīja' },
+      ],
+      rows: rows.map((r) => [
+        r.location, r.sku, r.name, r.quantity, CONDITIONS[r.condition_status], r.condition_note || '',
+        r.checked_at ? fmtDateTime(r.checked_at) : 'Nav pārbaudīts', r.checked_by || '',
+      ]),
+      summary: [
+        { label: 'Vienības labā stāvoklī', value: units('good') },
+        { label: 'Jāpārbauda', value: units('check') },
+        { label: 'Bojātās vienības', value: units('damaged') },
       ],
     };
   },
