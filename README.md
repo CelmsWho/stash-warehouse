@@ -22,6 +22,9 @@ Statiski HTML faili, klienta JavaScript un Node.js + Express API ar MySQL.
 | `dashboard.html` | Sākumlapa pēc pieteikšanās ar ātrajām saitēm. |
 | `add-product.html` | Produkta pievienošanas forma (administrators). |
 | `add-user.html` | Lietotāja izveides forma (administrators). |
+| `users.html` | Lietotāju saraksts ar rediģēšanas un dzēšanas pogām (administrators). |
+| `edit-user.html` | Lietotāja rediģēšanas forma (administrators). |
+| `place.html` | Preču izvietošana noliktavā: reģistrēšana, labošana, noņemšana, izmaiņu vēsture (plauktu kārtotājs). |
 | `placeholder.html` | Pagaidu lapa sadaļām, kas vēl nav gatavas. |
 | `forbidden.html` / `404.html` | Kļūdu lapas (nav piekļuves / lapa neeksistē). |
 | `styles.css` | Visu lapu izskats. |
@@ -33,6 +36,9 @@ Statiski HTML faili, klienta JavaScript un Node.js + Express API ar MySQL.
 | `dashboard.js` | Uzzīmē sveicienu un ātrās saites sākumlapā. |
 | `add-product.js` | Nosūta produkta formu serverim un parāda kļūdas. |
 | `add-user.js` | Nosūta lietotāja formu serverim un parāda kļūdas. |
+| `users.js` | Ielādē lietotāju sarakstu un apstrādā dzēšanu. |
+| `edit-user.js` | Ielādē lietotāja datus formā un saglabā izmaiņas. |
+| `place.js` | Ielādē preces un izvietojumus, apstrādā izvietošanu, labošanu un noņemšanu. |
 | `placeholder.js` | Uzliek virsrakstu pagaidu lapai. |
 
 ## Palaišana
@@ -46,9 +52,9 @@ npm start                  http://localhost:3000
 ## Testa konti (tikai izstrādei)
 | Loma | Lietotājvārds | Parole |
 |---|---|---|
-| Administrators | admin | admin123 |
-| Noliktavas darbinieks | worker | worker123 |
-| Plauktu kārtotājs | sorter | sorter123 |
+| Administrators | admin | Admin#2026 |
+| Noliktavas darbinieks | worker | Worker#2026 |
+| Plauktu kārtotājs | sorter | Sorter#2026 |
 
 ## Drošība
 - Paroles tikai kā bcrypt hash, parametrizēti SQL vaicājumi

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="lv">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Izvietot preces | STASH</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="app">
+    <aside id="sidebar"></aside>
+    <main class="main wide">
+      <header class="page-head"><h1>Izvietot preces</h1></header>
+
+      <div id="msg" class="alert hidden" role="status"></div>
+
+      <section class="crate">
+        <h2>Reģistrēt izvietojumu</h2>
+        <form id="placeForm" class="place-form" autocomplete="off">
+          <div class="field" data-field="productId">
+            <label for="productId">Prece</label>
+            <select id="productId" name="productId" required>
+              <option value="" disabled selected>Izvēlieties preci</option>
+            </select>
+            <p class="err" data-err="productId"></p>
+          </div>
+          <div class="field" data-field="location">
+            <label for="location">Vieta</label>
+            <input
+              id="location"
+              name="location"
+              type="text"
+              required
+              maxlength="20"
+              placeholder="A-03-2"
+            />
+            <p class="hint">Zona-plaukts-līmenis</p>
+            <p class="err" data-err="location"></p>
+          </div>
+          <div class="field" data-field="quantity">
+            <label for="quantity">Daudzums</label>
+            <input
+              id="quantity"
+              name="quantity"
+              type="number"
+              required
+              min="1"
+              max="1000000"
+              step="1"
+            />
+            <p class="err" data-err="quantity"></p>
+          </div>
+          <button type="submit" class="submit">Izvietot</button>
+        </form>
+      </section>
+
+      <h2 class="section-title">Preces noliktavā</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Artikula kods</th>
+              <th>Nosaukums</th>
+              <th>Kategorija</th>
+              <th>Daudzums</th>
+              <th>Izvietots</th>
+              <th>Neizvietots</th>
+            </tr>
+          </thead>
+          <tbody id="productsBody"></tbody>
+        </table>
+      </div>
+
+      <h2 class="section-title">Izvietojums</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Vieta</th>
+              <th>Artikula kods</th>
+              <th>Nosaukums</th>
+              <th>Daudzums</th>
+              <th>Atjaunināts</th>
+              <th>Darbības</th>
+            </tr>
+          </thead>
+          <tbody id="placementsBody"></tbody>
+        </table>
+      </div>
+
+      <h2 class="section-title">Pēdējās izmaiņas</h2>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Laiks</th>
+              <th>Lietotājs</th>
+              <th>Prece</th>
+              <th>Izmaiņa</th>
+            </tr>
+          </thead>
+          <tbody id="logBody"></tbody>
+        </table>
+      </div>
+    </main>
+
+    <dialog id="editDialog" class="dialog">
+      <h2>Labot izvietojumu</h2>
+      <p id="editInfo" class="hint"></p>
+      <form id="editForm" autocomplete="off">
+        <div class="field" data-field="location">
+          <label for="editLocation">Vieta</label>
+          <input
+            id="editLocation"
+            name="location"
+            type="text"
+            required
+            maxlength="20"
+          />
+          <p class="err" data-err="location"></p>
+        </div>
+        <div class="field" data-field="quantity">
+          <label for="editQuantity">Daudzums</label>
+          <input
+            id="editQuantity"
+            name="quantity"
+            type="number"
+            required
+            min="1"
+            max="1000000"
+            step="1"
+          />
+          <p class="err" data-err="quantity"></p>
+        </div>
+        <div class="dialog-actions">
+          <button type="submit" class="submit">Saglabāt</button>
+          <button type="button" id="editCancel" class="btn-sm">Atcelt</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/auth.js"></script>
+    <script src="/place.js"></script>
+  </body>
+</html>
