@@ -96,6 +96,33 @@ async function init() {
       CONSTRAINT fk_log_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  // Izvietojuma stāvoklis (migrācija esošai tabulai)
+  if (!(await columnExists('placements', 'condition_status'))) {
+    await pool.execute(`
+      ALTER TABLE placements
+        ADD COLUMN condition_status ENUM('good', 'check', 'damaged') NOT NULL DEFAULT 'good',
+        ADD COLUMN condition_note VARCHAR(200) NULL,
+        ADD COLUMN checked_at TIMESTAMP NULL DEFAULT NULL,
+        ADD COLUMN checked_by INT NULL,
+        ADD CONSTRAINT fk_pl_checked FOREIGN KEY (checked_by) REFERENCES users(id) ON DELETE SET NULL
+    `);
+  }
+
+  // Stāvokļa pārbaužu vēsture
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS condition_checks (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      product_id INT NULL,
+      location   VARCHAR(20) NOT NULL,
+      status     ENUM('good', 'check', 'damaged') NOT NULL,
+      note       VARCHAR(200) NULL,
+      user_id    INT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_cc_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      CONSTRAINT fk_cc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 }
 
 module.exports = { pool, init, config };
