@@ -64,6 +64,38 @@ async function init() {
       CONSTRAINT fk_products_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  // Preču izvietojums noliktavā: viena prece var atrasties vairākās vietās
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS placements (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      product_id INT NOT NULL,
+      location   VARCHAR(20) NOT NULL,
+      quantity   INT UNSIGNED NOT NULL,
+      updated_by INT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_product_location (product_id, location),
+      CONSTRAINT fk_pl_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+      CONSTRAINT fk_pl_user FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  // Izvietojuma izmaiņu vēsture
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS placement_log (
+      id           INT AUTO_INCREMENT PRIMARY KEY,
+      product_id   INT NULL,
+      action       ENUM('place', 'update', 'remove') NOT NULL,
+      old_location VARCHAR(20) NULL,
+      new_location VARCHAR(20) NULL,
+      old_quantity INT UNSIGNED NULL,
+      new_quantity INT UNSIGNED NULL,
+      user_id      INT NULL,
+      created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_log_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL,
+      CONSTRAINT fk_log_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 }
 
 module.exports = { pool, init, config };
