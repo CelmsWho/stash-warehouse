@@ -26,18 +26,18 @@ const roleNames = {
 // Katra lapa: adrese, HTML fails un lomas, kurām tā ir atļauta.
 // Lapas, kas vēl nav gatavas, izmanto placeholder.html.
 const pages = [
-  { path: '/produkti/jauns',  file: 'add-product.html', label: 'Pievienot produktu',  roles: ['admin'] },
-  { path: '/lietotaji/jauns', file: 'add-user.html',    label: 'Pievienot lietotāju', roles: ['admin'] },
-  { path: '/lietotaji',       file: 'users.html',       label: 'Lietotāji',           roles: ['admin'] },
+  { path: '/produkti/jauns', file: 'add-product.html', label: 'Pievienot produktu', roles: ['admin'] },
+  { path: '/lietotaji/jauns', file: 'add-user.html', label: 'Pievienot lietotāju', roles: ['admin'] },
+  { path: '/lietotaji', file: 'users.html', label: 'Lietotāji', roles: ['admin'] },
   { path: '/lietotaji/rediget', file: 'edit-user.html', label: 'Rediģēt lietotāju', roles: ['admin'] },
-  { path: '/izvietot',        file: 'placeholder.html', label: 'Izvietot preces',     roles: ['sorter'] },
-  { path: '/atskaites',       file: 'placeholder.html', label: 'Sagatavot atskaiti',  roles: ['sorter', 'worker'] },
-  { path: '/datu-ievade',     file: 'placeholder.html', label: 'Datu ievade',         roles: ['sorter'] },
-  { path: '/pasutijumi',      file: 'placeholder.html', label: 'Veikt pasūtījumu',    roles: ['worker'] },
+  { path: '/izvietot', file: 'place.html', label: 'Izvietot preces', roles: ['sorter', 'admin'] },
+  { path: '/atskaites', file: 'placeholder.html', label: 'Sagatavot atskaiti', roles: ['sorter', 'worker'] },
+  { path: '/datu-ievade', file: 'placeholder.html', label: 'Datu ievade', roles: ['sorter'] },
+  { path: '/pasutijumi', file: 'placeholder.html', label: 'Veikt pasūtījumu', roles: ['worker'] },
 ];
 
 const menuOrder = {
-  admin:  ['/produkti/jauns', '/lietotaji/jauns', '/lietotaji'],
+  admin: ['/produkti/jauns', '/lietotaji/jauns', '/lietotaji'],
   sorter: ['/izvietot', '/atskaites', '/datu-ievade'],
   worker: ['/pasutijumi', '/atskaites'],
 };
@@ -82,7 +82,7 @@ function verifyCsrf(req, res, next) {
   const sent = req.get('x-csrf-token');
   const real = req.session.csrf;
   if (typeof sent === 'string' && real && sent.length === real.length &&
-      crypto.timingSafeEqual(Buffer.from(sent), Buffer.from(real))) return next();
+    crypto.timingSafeEqual(Buffer.from(sent), Buffer.from(real))) return next();
   return res.status(403).json({ error: 'Nederīgs drošības žetons. Atsvaidziniet lapu.' });
 }
 
@@ -449,6 +449,246 @@ app.delete('/api/users/:id', apiGuard('admin'), verifyCsrf, async (req, res) => 
   } catch (err) {
     console.error('Lietotāja dzēšanas kļūda:', err.message);
     res.status(500).json({ error: 'Servera kļūda. Lietotājs netika dzēsts.' });
+  }
+});
+
+// ---------- API: preces (skatīšana) ----------
+// Preču sarakstu drīkst redzēt visas lomas; katrai precei parāda, cik vienību jau izvietots
+app.get('/api/products', apiGuard('admin', 'worker', 'sorter'), async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT p.id, p.sku, p.name, p.category, p.quantity, COALESCE(SUM(pl.quantity), 0) AS placed
+       FROM products p LEFT JOIN placements pl ON pl.product_id = p.id
+       GROUP BY p.id ORDER BY p.sku`
+    );
+    res.json({
+      products: rows.map((r) => ({
+        id: r.id, sku: r.sku, name: r.name, category: r.category,
+        quantity: r.quantity, placed: Number(r.placed),
+      })),
+    });
+  } catch (err) {
+    console.error('Preču saraksta kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda.' });
+  }
+});
+
+// ---------- API: preču izvietojums (plauktu kārtotājs un administrators) ----------
+class HttpError extends Error {
+  constructor(status, payload) { super('HttpError'); this.status = status; this.payload = payload; }
+}
+
+// Izpilda darbību transakcijā: vai nu izdodas viss, vai nekas
+async function withTx(fn) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+function sendError(res, err, label) {
+  if (err instanceof HttpError) return res.status(err.status).json(err.payload);
+  if (err.code === 'ER_DUP_ENTRY') {
+    return res.status(409).json({ errors: { location: 'Šajā vietā šī prece jau ir izvietota.' } });
+  }
+  console.error(label, err.message);
+  return res.status(500).json({ error: 'Servera kļūda. Izmaiņas netika saglabātas.' });
+}
+
+async function logPlacement(conn, e) {
+  await conn.execute(
+    `INSERT INTO placement_log (product_id, action, old_location, new_location, old_quantity, new_quantity, user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [e.productId, e.action, e.oldLocation ?? null, e.newLocation ?? null, e.oldQuantity ?? null, e.newQuantity ?? null, e.userId]
+  );
+}
+
+const locationRule = () => body('location').trim()
+  .customSanitizer((v) => String(v).toUpperCase())
+  .matches(/^[A-Z]{1,2}-\d{1,3}-\d{1,2}$/).withMessage('Vietas formāts: zona-plaukts-līmenis, piemēram, A-03-2.');
+
+const placeQuantityRule = () => body('quantity').trim()
+  .isInt({ min: 1, max: 1000000 }).withMessage('Daudzums ir vesels skaitlis no 1 līdz 1 000 000.')
+  .toInt();
+
+const placeRules = [
+  body('productId').trim().isInt({ min: 1 }).withMessage('Izvēlieties preci.').toInt(),
+  locationRule(),
+  placeQuantityRule(),
+];
+const placeEditRules = [locationRule(), placeQuantityRule()];
+
+const PLACERS = ['sorter', 'admin'];
+
+// Izvietojumu saraksts
+app.get('/api/placements', apiGuard(...PLACERS), async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT pl.id, pl.product_id, p.sku, p.name, pl.location, pl.quantity, pl.updated_at, u.username AS updated_by
+       FROM placements pl
+       JOIN products p ON p.id = pl.product_id
+       LEFT JOIN users u ON u.id = pl.updated_by
+       ORDER BY pl.location, p.sku`
+    );
+    res.json({
+      placements: rows.map((r) => ({
+        id: r.id, productId: r.product_id, sku: r.sku, name: r.name, location: r.location,
+        quantity: r.quantity, updatedAt: r.updated_at, updatedBy: r.updated_by,
+      })),
+    });
+  } catch (err) {
+    console.error('Izvietojumu saraksta kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda.' });
+  }
+});
+
+// Izmaiņu vēsture (pēdējie 30 ieraksti)
+app.get('/api/placement-log', apiGuard(...PLACERS), async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      `SELECT l.id, l.action, l.old_location, l.new_location, l.old_quantity, l.new_quantity, l.created_at,
+              p.sku, p.name, u.username
+       FROM placement_log l
+       LEFT JOIN products p ON p.id = l.product_id
+       LEFT JOIN users u ON u.id = l.user_id
+       ORDER BY l.id DESC LIMIT 30`
+    );
+    res.json({
+      log: rows.map((r) => ({
+        id: r.id, action: r.action, oldLocation: r.old_location, newLocation: r.new_location,
+        oldQuantity: r.old_quantity, newQuantity: r.new_quantity, createdAt: r.created_at,
+        sku: r.sku, name: r.name, username: r.username,
+      })),
+    });
+  } catch (err) {
+    console.error('Vēstures kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda.' });
+  }
+});
+
+// Jauns izvietojums (ja šajā vietā prece jau ir, daudzums tiek pieskaitīts)
+app.post('/api/placements', apiGuard(...PLACERS), verifyCsrf, placeRules, async (req, res) => {
+  const errors = validationErrors(req);
+  if (errors) return res.status(400).json({ errors });
+
+  const { productId, location, quantity } = req.body;
+  const userId = req.session.user.id;
+
+  try {
+    await withTx(async (conn) => {
+      const [prod] = await conn.execute('SELECT quantity FROM products WHERE id = ? FOR UPDATE', [productId]);
+      if (!prod[0]) throw new HttpError(404, { errors: { productId: 'Prece nav atrasta.' } });
+
+      const [sum] = await conn.execute(
+        'SELECT COALESCE(SUM(quantity), 0) AS placed FROM placements WHERE product_id = ?', [productId]
+      );
+      const free = prod[0].quantity - Number(sum[0].placed);
+      if (quantity > free) {
+        const text = free <= 0 ? 'Šī prece jau ir pilnībā izvietota.' : 'Var izvietot ne vairāk kā ' + free + ' vienības.';
+        throw new HttpError(400, { errors: { quantity: text } });
+      }
+
+      const [ex] = await conn.execute(
+        'SELECT id, quantity FROM placements WHERE product_id = ? AND location = ? FOR UPDATE', [productId, location]
+      );
+      const oldQuantity = ex[0] ? ex[0].quantity : 0;
+      if (ex[0]) {
+        await conn.execute('UPDATE placements SET quantity = ?, updated_by = ? WHERE id = ?', [oldQuantity + quantity, userId, ex[0].id]);
+      } else {
+        await conn.execute(
+          'INSERT INTO placements (product_id, location, quantity, updated_by) VALUES (?, ?, ?, ?)',
+          [productId, location, quantity, userId]
+        );
+      }
+      await logPlacement(conn, {
+        productId, action: 'place', newLocation: location,
+        oldQuantity, newQuantity: oldQuantity + quantity, userId,
+      });
+    });
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    sendError(res, err, 'Izvietošanas kļūda:');
+  }
+});
+
+// Izvietojuma labošana (vieta un/vai daudzums)
+app.put('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, placeEditRules, async (req, res) => {
+  const id = parseId(req);
+  if (!id) return res.status(400).json({ error: 'Nederīgs identifikators.' });
+  const errors = validationErrors(req);
+  if (errors) return res.status(400).json({ errors });
+
+  const { location, quantity } = req.body;
+  const userId = req.session.user.id;
+
+  try {
+    await withTx(async (conn) => {
+      const [cur] = await conn.execute(
+        'SELECT id, product_id, location, quantity FROM placements WHERE id = ? FOR UPDATE', [id]
+      );
+      if (!cur[0]) throw new HttpError(404, { error: 'Izvietojums nav atrasts.' });
+      const pl = cur[0];
+
+      const [prod] = await conn.execute('SELECT quantity FROM products WHERE id = ? FOR UPDATE', [pl.product_id]);
+      const [others] = await conn.execute(
+        'SELECT COALESCE(SUM(quantity), 0) AS q FROM placements WHERE product_id = ? AND id <> ?', [pl.product_id, id]
+      );
+      const room = prod[0].quantity - Number(others[0].q);
+      if (quantity > room) {
+        throw new HttpError(400, { errors: { quantity: 'Šai precei var norādīt ne vairāk kā ' + room + ' vienības.' } });
+      }
+
+      if (location !== pl.location) {
+        const [taken] = await conn.execute(
+          'SELECT id FROM placements WHERE product_id = ? AND location = ?', [pl.product_id, location]
+        );
+        if (taken[0]) throw new HttpError(409, { errors: { location: 'Šajā vietā šī prece jau ir izvietota.' } });
+      }
+
+      if (location === pl.location && quantity === pl.quantity) return; // nekas nav mainīts
+
+      await conn.execute('UPDATE placements SET location = ?, quantity = ?, updated_by = ? WHERE id = ?', [location, quantity, userId, id]);
+      await logPlacement(conn, {
+        productId: pl.product_id, action: 'update',
+        oldLocation: pl.location, newLocation: location,
+        oldQuantity: pl.quantity, newQuantity: quantity, userId,
+      });
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    sendError(res, err, 'Izvietojuma atjaunošanas kļūda:');
+  }
+});
+
+// Preces noņemšana no vietas
+app.delete('/api/placements/:id', apiGuard(...PLACERS), verifyCsrf, async (req, res) => {
+  const id = parseId(req);
+  if (!id) return res.status(400).json({ error: 'Nederīgs identifikators.' });
+  const userId = req.session.user.id;
+
+  try {
+    await withTx(async (conn) => {
+      const [cur] = await conn.execute(
+        'SELECT product_id, location, quantity FROM placements WHERE id = ? FOR UPDATE', [id]
+      );
+      if (!cur[0]) throw new HttpError(404, { error: 'Izvietojums nav atrasts.' });
+      await conn.execute('DELETE FROM placements WHERE id = ?', [id]);
+      await logPlacement(conn, {
+        productId: cur[0].product_id, action: 'remove',
+        oldLocation: cur[0].location, oldQuantity: cur[0].quantity, userId,
+      });
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    sendError(res, err, 'Izvietojuma dzēšanas kļūda:');
   }
 });
 
