@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Datu ievade | STASH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="app">
+  <aside id="sidebar"></aside>
+  <main class="main wide">
+    <header class="page-head"><h1>Datu ievade</h1></header>
+
+    <div id="msg" class="alert hidden" role="status"></div>
+
+    <section class="crate">
+      <h2>Reģistrēt preču stāvokli</h2>
+      <form id="conditionForm" class="cond-form" autocomplete="off">
+        <div class="field" data-field="placementId">
+          <label for="placementId">Izvietojums</label>
+          <select id="placementId" name="placementId" required>
+            <option value="" disabled selected>Izvēlieties vietu un preci</option>
+          </select>
+          <p class="err" data-err="placementId"></p>
+        </div>
+        <div class="field" data-field="status">
+          <label for="status">Stāvoklis</label>
+          <select id="status" name="status" required>
+            <option value="good">Labā stāvoklī</option>
+            <option value="check">Jāpārbauda</option>
+            <option value="damaged">Bojāts</option>
+          </select>
+          <p class="err" data-err="status"></p>
+        </div>
+        <div class="field wide" data-field="note">
+          <label for="note">Piezīme</label>
+          <textarea id="note" name="note" rows="3" maxlength="200"></textarea>
+          <p class="hint">Obligāta, ja stāvoklis nav "Labā stāvoklī". Līdz 200 simboliem.</p>
+          <p class="err" data-err="note"></p>
+        </div>
+        <button type="submit" class="submit">Saglabāt stāvokli</button>
+      </form>
+    </section>
+
+    <div class="result-head">
+      <h2 class="section-title tight">Izvietojumu stāvoklis</h2>
+      <div class="field filter">
+        <label for="filter">Rādīt</label>
+        <select id="filter">
+          <option value="all">Visus</option>
+          <option value="check">Jāpārbauda</option>
+          <option value="damaged">Bojātos</option>
+          <option value="good">Labā stāvoklī</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Vieta</th><th>Prece</th><th>Daudzums</th><th>Stāvoklis</th><th>Piezīme</th><th>Pārbaudīts</th><th>Darbības</th></tr>
+        </thead>
+        <tbody id="placementsBody"></tbody>
+      </table>
+    </div>
+
+    <h2 class="section-title">Pēdējās pārbaudes</h2>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Laiks</th><th>Lietotājs</th><th>Vieta</th><th>Prece</th><th>Stāvoklis</th><th>Piezīme</th></tr>
+        </thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="/auth.js"></script>
+  <script src="/data-entry.js"></script>
+</body>
+</html>
