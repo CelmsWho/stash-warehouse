@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pievienot lietotāju | STASH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="app">
+  <aside id="sidebar"></aside>
+  <main class="main">
+    <header class="page-head"><h1>Pievienot lietotāju</h1></header>
+
+    <form id="userForm" class="form-card form-narrow" autocomplete="off">
+      <div id="formMsg" class="alert hidden" role="status"></div>
+
+      <div class="field" id="f-username">
+        <label for="username">Lietotājvārds</label>
+        <input id="username" name="username" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_.\-]+">
+        <p class="err" data-err="username"></p>
+      </div>
+
+      <div class="field" id="f-firstName">
+        <label for="firstName">Vārds</label>
+        <input id="firstName" name="firstName" type="text" required minlength="2" maxlength="50">
+        <p class="err" data-err="firstName"></p>
+      </div>
+
+      <div class="field" id="f-gender">
+        <label for="gender">Dzimums</label>
+        <select id="gender" name="gender" required>
+          <option value="" disabled selected>Izvēlieties dzimumu</option>
+          <option value="male">Vīrietis</option>
+          <option value="female">Sieviete</option>
+        </select>
+        <p class="err" data-err="gender"></p>
+      </div>
+
+      <div class="field" id="f-password">
+        <label for="password">Parole</label>
+        <input id="password" name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password">
+        <p class="hint">Vismaz 8 simboli, tajos vismaz viens burts un viens cipars.</p>
+        <p class="err" data-err="password"></p>
+      </div>
+
+      <div class="field" id="f-role">
+        <label for="role">Loma</label>
+        <select id="role" name="role" required>
+          <option value="" disabled selected>Izvēlieties lomu</option>
+          <option value="admin">Administrators</option>
+          <option value="worker">Noliktavas darbinieks</option>
+          <option value="sorter">Plauktu kārtotājs</option>
+        </select>
+        <p class="err" data-err="role"></p>
+      </div>
+
+      <button type="submit" class="submit">Izveidot lietotāju</button>
+    </form>
+  </main>
+  <script src="/auth.js"></script>
+  <script src="/add-user.js"></script>
+</body>
+</html>
