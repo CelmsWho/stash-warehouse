@@ -27,6 +27,7 @@ Statiski HTML faili, klienta JavaScript un Node.js + Express API ar MySQL.
 | `place.html` | Preču izvietošana noliktavā: reģistrēšana, labošana, noņemšana, izmaiņu vēsture (plauktu kārtotājs). |
 | `reports.html` | Atskaišu sagatavošana: skatīšana, CSV lejupielāde un drukāšana (visas lomas ar savām atskaitēm). |
 | `data-entry.html` | Datu ievade: preču stāvokļa reģistrēšana (labs, jāpārbauda, bojāts) un pārbaužu vēsture (plauktu kārtotājs). |
+| `orders.html` | Pasūtījumu izveide, saraksts un statusu maiņa (noliktavas darbinieks). |
 | `placeholder.html` | Pagaidu lapa sadaļām, kas vēl nav gatavas. |
 | `forbidden.html` / `404.html` | Kļūdu lapas (nav piekļuves / lapa neeksistē). |
 | `styles.css` | Visu lapu izskats. |
@@ -43,6 +44,7 @@ Statiski HTML faili, klienta JavaScript un Node.js + Express API ar MySQL.
 | `place.js` | Ielādē preces un izvietojumus, apstrādā izvietošanu, labošanu un noņemšanu. |
 | `reports.js` | Ģenerē atskaiti, attēlo to tabulā un nodrošina CSV un drukāšanu. |
 | `data-entry.js` | Ielādē izvietojumus, filtrē pēc stāvokļa un nosūta stāvokļa pārbaudes. |
+| `orders.js` | Pasūtījuma forma ar preču rindām, saraksts, informācijas logs un statusu pogas. |
 | `placeholder.js` | Uzliek virsrakstu pagaidu lapai. |
 
 ## Palaišana

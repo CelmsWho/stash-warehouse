@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Veikt pasūtījumu | STASH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="app">
+  <aside id="sidebar"></aside>
+  <main class="main wide">
+    <header class="page-head"><h1>Veikt pasūtījumu</h1></header>
+
+    <div id="msg" class="alert hidden" role="status"></div>
+
+    <section class="crate">
+      <h2>Jauns pasūtījums</h2>
+      <form id="orderForm" autocomplete="off">
+        <div class="order-head">
+          <div class="field" data-field="customer">
+            <label for="customer">Klients</label>
+            <input id="customer" name="customer" type="text" required minlength="2" maxlength="100">
+            <p class="err" data-err="customer"></p>
+          </div>
+          <div class="field" data-field="note">
+            <label for="note">Piezīme</label>
+            <input id="note" name="note" type="text" maxlength="200">
+            <p class="err" data-err="note"></p>
+          </div>
+        </div>
+
+        <div class="field" data-field="items">
+          <label>Preces</label>
+          <div id="items"></div>
+          <p class="err" data-err="items"></p>
+          <button type="button" id="addRow" class="btn-sm">Pievienot rindu</button>
+        </div>
+
+        <button type="submit" class="submit">Izveidot pasūtījumu</button>
+      </form>
+    </section>
+
+    <div class="result-head">
+      <h2 class="section-title tight">Pasūtījumi</h2>
+      <div class="field filter">
+        <label for="filter">Rādīt</label>
+        <select id="filter">
+          <option value="">Visus</option>
+          <option value="new">Jaunos</option>
+          <option value="picking">Komplektējamos</option>
+          <option value="shipped">Nosūtītos</option>
+          <option value="completed">Izpildītos</option>
+          <option value="cancelled">Atceltos</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr><th>Nr.</th><th>Klients</th><th>Preces</th><th>Statuss</th><th>Izveidots</th><th>Darbības</th></tr>
+        </thead>
+        <tbody id="ordersBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <dialog id="orderDialog" class="dialog big">
+    <h2 id="dTitle"></h2>
+    <div id="dMsg" class="alert hidden" role="alert"></div>
+    <dl id="dInfo" class="detail"></dl>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead><tr><th>Artikula kods</th><th>Nosaukums</th><th class="num">Daudzums</th></tr></thead>
+        <tbody id="dItems"></tbody>
+      </table>
+    </div>
+
+    <h3 class="dialog-sub">Statusu vēsture</h3>
+    <ul id="dHistory" class="history"></ul>
+
+    <div id="dActions" class="dialog-actions wrap"></div>
+  </dialog>
+
+  <script src="/auth.js"></script>
+  <script src="/orders.js"></script>
+</body>
+</html>

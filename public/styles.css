@@ -880,3 +880,145 @@ a {
     color: #000;
   }
 }
+
+/* Pasūtījumi */
+.order-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.item-row {
+  display: grid;
+  grid-template-columns: 3fr 1fr auto;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.item-row select,
+.item-row input {
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--chalk);
+  background: #111413;
+  border: 2px solid var(--line);
+  border-radius: 0;
+}
+
+.item-row select:focus,
+.item-row input:focus {
+  border-color: var(--bulb);
+  outline: none;
+}
+
+.field.bad .item-row select,
+.field.bad .item-row input {
+  border-color: var(--stamp);
+}
+
+.dialog.big {
+  width: min(680px, 94vw);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.dialog-sub {
+  margin: 18px 0 8px;
+  font-family: 'Special Elite', monospace;
+  font-weight: 400;
+  font-size: 1rem;
+  color: #b3ae9f;
+}
+
+.dialog-actions.wrap {
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.detail {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 0 0 16px;
+}
+
+.detail dt {
+  font-family: 'Special Elite', monospace;
+  color: #b3ae9f;
+}
+
+.detail dd {
+  margin: 0;
+}
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: 'Special Elite', monospace;
+  font-size: .9rem;
+}
+
+.history li {
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.btn-sm.primary {
+  border-color: var(--bulb);
+  color: var(--bulb);
+}
+
+.btn-sm.primary:hover {
+  background: var(--bulb);
+  color: var(--ink);
+}
+
+.badge.new {
+  border-color: var(--chalk);
+  color: var(--chalk);
+}
+
+.badge.picking {
+  border-color: var(--bulb);
+  color: var(--bulb);
+}
+
+.badge.shipped {
+  border-color: #6f9bd1;
+  color: #a9c8ee;
+}
+
+.badge.completed {
+  border-color: #3f6b46;
+  color: #9fd3a8;
+}
+
+.badge.cancelled {
+  border-color: #6b6b66;
+  color: #9a9588;
+}
+
+@media (max-width: 720px) {
+  .order-head {
+    grid-template-columns: 1fr;
+  }
+
+  .item-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+
+  .badge.new,
+  .badge.picking,
+  .badge.shipped,
+  .badge.completed,
+  .badge.cancelled {
+    border-color: #666;
+    color: #000;
+  }
+}
