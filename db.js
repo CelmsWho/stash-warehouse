@@ -123,6 +123,45 @@ async function init() {
       CONSTRAINT fk_cc_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  // Pasūtījumi
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      customer   VARCHAR(100) NOT NULL,
+      note       VARCHAR(200) NULL,
+      status     ENUM('new', 'picking', 'shipped', 'completed', 'cancelled') NOT NULL DEFAULT 'new',
+      created_by INT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      KEY idx_orders_status (status),
+      CONSTRAINT fk_orders_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS order_items (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      order_id   INT NOT NULL,
+      product_id INT NOT NULL,
+      quantity   INT UNSIGNED NOT NULL,
+      UNIQUE KEY uq_order_product (order_id, product_id),
+      CONSTRAINT fk_oi_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+      CONSTRAINT fk_oi_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
+
+  await pool.execute(`
+    CREATE TABLE IF NOT EXISTS order_status_log (
+      id         INT AUTO_INCREMENT PRIMARY KEY,
+      order_id   INT NOT NULL,
+      status     ENUM('new', 'picking', 'shipped', 'completed', 'cancelled') NOT NULL,
+      user_id    INT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_osl_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+      CONSTRAINT fk_osl_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 }
 
 module.exports = { pool, init, config };
