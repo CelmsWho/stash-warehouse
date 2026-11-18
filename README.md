@@ -28,6 +28,7 @@ Statiski HTML faili, klienta JavaScript un Node.js + Express API ar MySQL.
 | `reports.html` | Atskaišu sagatavošana: skatīšana, CSV lejupielāde un drukāšana (visas lomas ar savām atskaitēm). |
 | `data-entry.html` | Datu ievade: preču stāvokļa reģistrēšana (labs, jāpārbauda, bojāts) un pārbaužu vēsture (plauktu kārtotājs). |
 | `orders.html` | Pasūtījumu izveide, saraksts un statusu maiņa (noliktavas darbinieks). |
+| `products.html` | Produktu saraksts ar meklēšanu, rediģēšanu un dzēšanu (administrators, darbinieks). |
 | `placeholder.html` | Pagaidu lapa sadaļām, kas vēl nav gatavas. |
 | `forbidden.html` / `404.html` | Kļūdu lapas (nav piekļuves / lapa neeksistē). |
 | `styles.css` | Visu lapu izskats. |
@@ -45,6 +46,7 @@ Statiski HTML faili, klienta JavaScript un Node.js + Express API ar MySQL.
 | `reports.js` | Ģenerē atskaiti, attēlo to tabulā un nodrošina CSV un drukāšanu. |
 | `data-entry.js` | Ielādē izvietojumus, filtrē pēc stāvokļa un nosūta stāvokļa pārbaudes. |
 | `orders.js` | Pasūtījuma forma ar preču rindām, saraksts, informācijas logs un statusu pogas. |
+| `products.js` | Ielādē produktus, meklē, rediģē un dzēš. |
 | `placeholder.js` | Uzliek virsrakstu pagaidu lapai. |
 
 ## Palaišana

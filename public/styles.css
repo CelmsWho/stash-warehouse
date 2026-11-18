@@ -1022,3 +1022,9 @@ a {
     color: #000;
   }
 }
+
+/* Produktu meklēšana */
+.field.search {
+  max-width: 360px;
+  margin-bottom: 16px;
+}

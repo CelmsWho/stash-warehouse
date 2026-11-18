@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="lv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Produkti | STASH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@700;900&family=Special+Elite&family=Archivo:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="app">
+  <aside id="sidebar"></aside>
+  <main class="main wide">
+    <header class="page-head">
+      <h1>Produkti</h1>
+      <a class="btn-sm" href="/produkti/jauns">Pievienot produktu</a>
+    </header>
+
+    <div id="msg" class="alert hidden" role="status"></div>
+
+    <div class="field search">
+      <label for="search">Meklēt</label>
+      <input id="search" type="search" placeholder="Kods, nosaukums vai kategorija">
+    </div>
+
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Artikula kods</th>
+            <th>Nosaukums</th>
+            <th>Kategorija</th>
+            <th class="num">Daudzums</th>
+            <th class="num">Izvietots</th>
+            <th class="num">Rezervēts</th>
+            <th class="num">Cena (EUR)</th>
+            <th>Darbības</th>
+          </tr>
+        </thead>
+        <tbody id="productsBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <dialog id="editDialog" class="dialog big">
+    <h2>Labot produktu</h2>
+    <form id="editForm" autocomplete="off">
+      <div class="row2">
+        <div class="field" data-field="sku">
+          <label for="eSku">Artikula kods</label>
+          <input id="eSku" name="sku" type="text" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_\-]+">
+          <p class="err" data-err="sku"></p>
+        </div>
+        <div class="field" data-field="category">
+          <label for="eCategory">Kategorija</label>
+          <input id="eCategory" name="category" type="text" maxlength="50">
+          <p class="err" data-err="category"></p>
+        </div>
+      </div>
+
+      <div class="field" data-field="name">
+        <label for="eName">Nosaukums</label>
+        <input id="eName" name="name" type="text" required minlength="2" maxlength="100">
+        <p class="err" data-err="name"></p>
+      </div>
+
+      <div class="row2">
+        <div class="field" data-field="quantity">
+          <label for="eQuantity">Daudzums</label>
+          <input id="eQuantity" name="quantity" type="number" required min="0" max="1000000" step="1">
+          <p class="hint">Nevar būt mazāks par izvietoto vai rezervēto daudzumu.</p>
+          <p class="err" data-err="quantity"></p>
+        </div>
+        <div class="field" data-field="price">
+          <label for="ePrice">Cena (EUR)</label>
+          <input id="ePrice" name="price" type="text" inputmode="decimal" required>
+          <p class="err" data-err="price"></p>
+        </div>
+      </div>
+
+      <div class="field" data-field="description">
+        <label for="eDescription">Apraksts</label>
+        <textarea id="eDescription" name="description" rows="3" maxlength="500"></textarea>
+        <p class="err" data-err="description"></p>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="submit" class="submit">Saglabāt</button>
+        <button type="button" id="editCancel" class="btn-sm">Atcelt</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/auth.js"></script>
+  <script src="/products.js"></script>
+</body>
+</html>
