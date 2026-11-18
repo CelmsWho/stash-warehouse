@@ -26,18 +26,18 @@ const roleNames = {
 // Katra lapa: adrese, HTML fails un lomas, kurām tā ir atļauta.
 // Lapas, kas vēl nav gatavas, izmanto placeholder.html.
 const pages = [
-  { path: '/produkti/jauns', file: 'add-product.html', label: 'Pievienot produktu', roles: ['admin'] },
-  { path: '/lietotaji/jauns', file: 'add-user.html', label: 'Pievienot lietotāju', roles: ['admin'] },
-  { path: '/lietotaji', file: 'users.html', label: 'Lietotāji', roles: ['admin'] },
+  { path: '/produkti/jauns',  file: 'add-product.html', label: 'Pievienot produktu',  roles: ['admin'] },
+  { path: '/lietotaji/jauns', file: 'add-user.html',    label: 'Pievienot lietotāju', roles: ['admin'] },
+  { path: '/lietotaji',       file: 'users.html',       label: 'Lietotāji',           roles: ['admin'] },
   { path: '/lietotaji/rediget', file: 'edit-user.html', label: 'Rediģēt lietotāju', roles: ['admin'] },
-  { path: '/izvietot', file: 'place.html', label: 'Izvietot preces', roles: ['sorter', 'admin'] },
-  { path: '/atskaites', file: 'reports.html', label: 'Sagatavot atskaiti', roles: ['sorter', 'worker', 'admin'] },
-  { path: '/datu-ievade', file: 'data-entry.html', label: 'Datu ievade', roles: ['sorter', 'admin'] },
-  { path: '/pasutijumi', file: 'placeholder.html', label: 'Veikt pasūtījumu', roles: ['worker'] },
+  { path: '/izvietot',        file: 'place.html',       label: 'Izvietot preces',     roles: ['sorter', 'admin'] },
+  { path: '/atskaites',       file: 'reports.html',     label: 'Sagatavot atskaiti',  roles: ['sorter', 'worker', 'admin'] },
+  { path: '/datu-ievade',     file: 'data-entry.html',   label: 'Datu ievade',         roles: ['sorter', 'admin'] },
+  { path: '/pasutijumi',      file: 'orders.html',      label: 'Veikt pasūtījumu',    roles: ['worker', 'admin'] },
 ];
 
 const menuOrder = {
-  admin: ['/produkti/jauns', '/lietotaji/jauns', '/lietotaji'],
+  admin:  ['/produkti/jauns', '/lietotaji/jauns', '/lietotaji'],
   sorter: ['/izvietot', '/atskaites', '/datu-ievade'],
   worker: ['/pasutijumi', '/atskaites'],
 };
@@ -82,7 +82,7 @@ function verifyCsrf(req, res, next) {
   const sent = req.get('x-csrf-token');
   const real = req.session.csrf;
   if (typeof sent === 'string' && real && sent.length === real.length &&
-    crypto.timingSafeEqual(Buffer.from(sent), Buffer.from(real))) return next();
+      crypto.timingSafeEqual(Buffer.from(sent), Buffer.from(real))) return next();
   return res.status(403).json({ error: 'Nederīgs drošības žetons. Atsvaidziniet lapu.' });
 }
 
@@ -457,14 +457,16 @@ app.delete('/api/users/:id', apiGuard('admin'), verifyCsrf, async (req, res) => 
 app.get('/api/products', apiGuard('admin', 'worker', 'sorter'), async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      `SELECT p.id, p.sku, p.name, p.category, p.quantity, COALESCE(SUM(pl.quantity), 0) AS placed
+      `SELECT p.id, p.sku, p.name, p.category, p.quantity, COALESCE(SUM(pl.quantity), 0) AS placed,
+              (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id
+               WHERE oi.product_id = p.id AND o.status IN ('new', 'picking')) AS reserved
        FROM products p LEFT JOIN placements pl ON pl.product_id = p.id
        GROUP BY p.id ORDER BY p.sku`
     );
     res.json({
       products: rows.map((r) => ({
         id: r.id, sku: r.sku, name: r.name, category: r.category,
-        quantity: r.quantity, placed: Number(r.placed),
+        quantity: r.quantity, placed: Number(r.placed), reserved: Number(r.reserved),
       })),
     });
   } catch (err) {
@@ -792,6 +794,238 @@ app.get('/api/condition-log', apiGuard(...PLACERS), async (req, res) => {
   }
 });
 
+// ---------- API: pasūtījumi (noliktavas darbinieks un administrators) ----------
+const ORDER_ROLES = ['worker', 'admin'];
+
+const ORDER_STATUSES = {
+  new: 'Jauns',
+  picking: 'Komplektē',
+  shipped: 'Nosūtīts',
+  completed: 'Izpildīts',
+  cancelled: 'Atcelts',
+};
+
+// Atļautās statusu maiņas (pasūtījuma izpildes process)
+const ORDER_FLOW = {
+  new: ['picking', 'cancelled'],
+  picking: ['shipped', 'cancelled'],
+  shipped: ['completed'],
+  completed: [],
+  cancelled: [],
+};
+
+const hasStatus = (v) => typeof v === 'string' && Object.prototype.hasOwnProperty.call(ORDER_STATUSES, v);
+
+const orderRules = [
+  body('customer').trim()
+    .isLength({ min: 2, max: 100 }).withMessage('Klienta nosaukumam jābūt 2-100 simbolus garam.'),
+  body('note').trim()
+    .isLength({ max: 200 }).withMessage('Piezīme nedrīkst būt garāka par 200 simboliem.'),
+  body('items')
+    .isArray({ min: 1, max: 50 }).withMessage('Pievienojiet vismaz vienu preci (līdz 50 rindām).'),
+  body('items.*.productId')
+    .isInt({ min: 1 }).withMessage('Izvēlieties preci katrā rindā.').toInt(),
+  body('items.*.quantity')
+    .isInt({ min: 1, max: 1000000 }).withMessage('Katrai precei norādiet daudzumu no 1 līdz 1 000 000.').toInt(),
+];
+
+// Preces noņemšana no noliktavas nosūtot pasūtījumu: vispirms no neizvietotā atlikuma,
+// tad no plauktiem (vispirms no vietām ar lielāko daudzumu), ar ierakstu izvietojuma vēsturē
+async function shipOrderStock(conn, orderId, userId) {
+  const [items] = await conn.execute(
+    'SELECT product_id, quantity FROM order_items WHERE order_id = ? ORDER BY product_id', [orderId]
+  );
+
+  for (const it of items) {
+    const [prod] = await conn.execute('SELECT quantity FROM products WHERE id = ? FOR UPDATE', [it.product_id]);
+    if (!prod[0] || prod[0].quantity < it.quantity) {
+      throw new HttpError(409, { error: 'Nepietiek preču noliktavā, lai nosūtītu pasūtījumu.' });
+    }
+
+    const [placedRows] = await conn.execute(
+      'SELECT id, location, quantity FROM placements WHERE product_id = ? ORDER BY quantity DESC, id FOR UPDATE',
+      [it.product_id]
+    );
+    const placed = placedRows.reduce((a, r) => a + r.quantity, 0);
+    const unplaced = Math.max(0, prod[0].quantity - placed);
+    let remaining = Math.max(0, it.quantity - unplaced); // cik jāņem no plauktiem
+
+    for (const pl of placedRows) {
+      if (remaining <= 0) break;
+      const take = Math.min(pl.quantity, remaining);
+      if (take === pl.quantity) {
+        await conn.execute('DELETE FROM placements WHERE id = ?', [pl.id]);
+        await logPlacement(conn, {
+          productId: it.product_id, action: 'remove', oldLocation: pl.location, oldQuantity: pl.quantity, userId,
+        });
+      } else {
+        await conn.execute('UPDATE placements SET quantity = ?, updated_by = ? WHERE id = ?', [pl.quantity - take, userId, pl.id]);
+        await logPlacement(conn, {
+          productId: it.product_id, action: 'update', oldLocation: pl.location, newLocation: pl.location,
+          oldQuantity: pl.quantity, newQuantity: pl.quantity - take, userId,
+        });
+      }
+      remaining -= take;
+    }
+
+    await conn.execute('UPDATE products SET quantity = quantity - ? WHERE id = ?', [it.quantity, it.product_id]);
+  }
+}
+
+// Pasūtījumu saraksts (pēc izvēles ar filtru ?status=...)
+app.get('/api/orders', apiGuard(...ORDER_ROLES), async (req, res) => {
+  const status = hasStatus(req.query.status) ? req.query.status : null;
+  try {
+    const [rows] = await pool.execute(
+      `SELECT o.id, o.customer, o.status, o.created_at, u.username AS created_by,
+              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS lines,
+              (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS units
+       FROM orders o LEFT JOIN users u ON u.id = o.created_by
+       ${status ? 'WHERE o.status = ?' : ''}
+       ORDER BY o.id DESC LIMIT 200`,
+      status ? [status] : []
+    );
+    res.json({
+      orders: rows.map((r) => ({
+        id: r.id, customer: r.customer, status: r.status, statusName: ORDER_STATUSES[r.status],
+        createdAt: r.created_at, createdBy: r.created_by, lines: Number(r.lines), units: Number(r.units),
+      })),
+    });
+  } catch (err) {
+    console.error('Pasūtījumu saraksta kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda.' });
+  }
+});
+
+// Viens pasūtījums ar precēm un statusu vēsturi
+app.get('/api/orders/:id', apiGuard(...ORDER_ROLES), async (req, res) => {
+  const id = parseId(req);
+  if (!id) return res.status(400).json({ error: 'Nederīgs identifikators.' });
+  try {
+    const [orders] = await pool.execute(
+      `SELECT o.id, o.customer, o.note, o.status, o.created_at, u.username AS created_by
+       FROM orders o LEFT JOIN users u ON u.id = o.created_by WHERE o.id = ?`, [id]
+    );
+    if (!orders[0]) return res.status(404).json({ error: 'Pasūtījums nav atrasts.' });
+    const o = orders[0];
+
+    const [items] = await pool.execute(
+      `SELECT oi.quantity, p.sku, p.name FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id WHERE oi.order_id = ? ORDER BY p.sku`, [id]
+    );
+    const [history] = await pool.execute(
+      `SELECT l.status, l.created_at, u.username FROM order_status_log l
+       LEFT JOIN users u ON u.id = l.user_id WHERE l.order_id = ? ORDER BY l.id`, [id]
+    );
+
+    res.json({
+      order: {
+        id: o.id, customer: o.customer, note: o.note, status: o.status, statusName: ORDER_STATUSES[o.status],
+        createdAt: o.created_at, createdBy: o.created_by, nextStatuses: ORDER_FLOW[o.status],
+      },
+      items: items.map((i) => ({ sku: i.sku, name: i.name, quantity: i.quantity })),
+      history: history.map((h) => ({
+        status: h.status, statusName: ORDER_STATUSES[h.status], createdAt: h.created_at, username: h.username,
+      })),
+    });
+  } catch (err) {
+    console.error('Pasūtījuma ielādes kļūda:', err.message);
+    res.status(500).json({ error: 'Servera kļūda.' });
+  }
+});
+
+// Jauns pasūtījums: preces tiek rezervētas, noliktavā tās atrodas līdz nosūtīšanai
+app.post('/api/orders', apiGuard(...ORDER_ROLES), verifyCsrf, orderRules, async (req, res) => {
+  const errors = validationErrors(req);
+  if (errors) {
+    const out = {};
+    for (const [k, v] of Object.entries(errors)) {
+      const key = k.startsWith('items') ? 'items' : k;
+      if (!out[key]) out[key] = v;
+    }
+    return res.status(400).json({ errors: out });
+  }
+
+  const { customer, note } = req.body;
+  const userId = req.session.user.id;
+  const items = req.body.items.map((i) => ({ productId: i.productId, quantity: i.quantity }));
+
+  if (new Set(items.map((i) => i.productId)).size !== items.length) {
+    return res.status(400).json({ errors: { items: 'Katra prece drīkst būt pievienota tikai vienu reizi.' } });
+  }
+  items.sort((a, b) => a.productId - b.productId); // vienāda bloķēšanas secība novērš strupceļus
+
+  try {
+    const orderId = await withTx(async (conn) => {
+      for (const it of items) {
+        const [prod] = await conn.execute('SELECT sku, quantity FROM products WHERE id = ? FOR UPDATE', [it.productId]);
+        if (!prod[0]) throw new HttpError(400, { errors: { items: 'Izvēlētā prece nav atrasta.' } });
+
+        const [reserved] = await conn.execute(
+          `SELECT COALESCE(SUM(oi.quantity), 0) AS r FROM order_items oi
+           JOIN orders o ON o.id = oi.order_id
+           WHERE oi.product_id = ? AND o.status IN ('new', 'picking')`, [it.productId]
+        );
+        const available = prod[0].quantity - Number(reserved[0].r);
+        if (it.quantity > available) {
+          throw new HttpError(400, {
+            errors: { items: 'Precei ' + prod[0].sku + ' pieejamas tikai ' + Math.max(available, 0) + ' vienības (pārējās ir rezervētas).' },
+          });
+        }
+      }
+
+      const [ins] = await conn.execute(
+        'INSERT INTO orders (customer, note, created_by) VALUES (?, ?, ?)', [customer, note || null, userId]
+      );
+      for (const it of items) {
+        await conn.execute(
+          'INSERT INTO order_items (order_id, product_id, quantity) VALUES (?, ?, ?)', [ins.insertId, it.productId, it.quantity]
+        );
+      }
+      await conn.execute('INSERT INTO order_status_log (order_id, status, user_id) VALUES (?, ?, ?)', [ins.insertId, 'new', userId]);
+      return ins.insertId;
+    });
+    res.status(201).json({ ok: true, id: orderId });
+  } catch (err) {
+    sendError(res, err, 'Pasūtījuma izveides kļūda:');
+  }
+});
+
+// Statusa maiņa pēc izpildes procesa; nosūtot pasūtījumu preces tiek norakstītas
+app.post('/api/orders/:id/status', apiGuard(...ORDER_ROLES), verifyCsrf,
+  [body('status').custom(hasStatus).withMessage('Nederīgs statuss.')],
+  async (req, res) => {
+    const id = parseId(req);
+    if (!id) return res.status(400).json({ error: 'Nederīgs identifikators.' });
+    const errors = validationErrors(req);
+    if (errors) return res.status(400).json({ errors });
+
+    const { status } = req.body;
+    const userId = req.session.user.id;
+
+    try {
+      await withTx(async (conn) => {
+        const [cur] = await conn.execute('SELECT status FROM orders WHERE id = ? FOR UPDATE', [id]);
+        if (!cur[0]) throw new HttpError(404, { error: 'Pasūtījums nav atrasts.' });
+
+        if (!ORDER_FLOW[cur[0].status].includes(status)) {
+          throw new HttpError(400, {
+            error: 'Statusu nevar mainīt no "' + ORDER_STATUSES[cur[0].status] + '" uz "' + ORDER_STATUSES[status] + '".',
+          });
+        }
+
+        if (status === 'shipped') await shipOrderStock(conn, id, userId);
+
+        await conn.execute('UPDATE orders SET status = ? WHERE id = ?', [status, id]);
+        await conn.execute('INSERT INTO order_status_log (order_id, status, user_id) VALUES (?, ?, ?)', [id, status, userId]);
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      sendError(res, err, 'Statusa maiņas kļūda:');
+    }
+  }
+);
+
 // ---------- API: atskaites ----------
 const REPORT_ROLES = ['sorter', 'worker', 'admin'];
 
@@ -816,6 +1050,12 @@ const REPORTS = {
     label: 'Neizvietotās preces',
     description: 'Preces, kuras vēl nav pilnībā izvietotas plauktos.',
     roles: REPORT_ROLES,
+  },
+  orders: {
+    label: 'Pasūtījumi',
+    description: 'Pasūtījumi izvēlētajā periodā ar statusiem un preču daudzumu.',
+    roles: ['worker', 'admin'],
+    dates: true,
   },
   activity: {
     label: 'Izvietojuma izmaiņu žurnāls',
@@ -858,6 +1098,17 @@ async function loadStock() {
 }
 
 const sumBy = (items, fn) => items.reduce((a, i) => a + fn(i), 0);
+
+// Periods no/līdz (GGGG-MM-DD); pēc noklusējuma pēdējās 30 dienas. Beigu datums ir ieskaitīts.
+function parsePeriod(query) {
+  const today = new Date();
+  const to = query.to === undefined ? isoLocal(today) : validDate(query.to);
+  const from = query.from === undefined ? isoLocal(new Date(today.getTime() - 29 * 86400000)) : validDate(query.from);
+  if (!from || !to) throw new HttpError(400, { error: 'Nederīgs datums. Izmantojiet formātu GGGG-MM-DD.' });
+  if (from > to) throw new HttpError(400, { error: 'Sākuma datums nevar būt pēc beigu datuma.' });
+  const toNext = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+  return { from, to, toNext };
+}
 
 const reportBuilders = {
   async stock() {
@@ -929,6 +1180,38 @@ const reportBuilders = {
     };
   },
 
+  async orders(query) {
+    const { from, to, toNext } = parsePeriod(query);
+    const [rows] = await pool.execute(
+      `SELECT o.id, o.customer, o.status, o.created_at, u.username AS created_by,
+              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS lines,
+              (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS units
+       FROM orders o LEFT JOIN users u ON u.id = o.created_by
+       WHERE o.created_at >= ? AND o.created_at < ?
+       ORDER BY o.id DESC LIMIT 1000`,
+      [from, toNext]
+    );
+    const count = (st) => rows.filter((r) => r.status === st).length;
+
+    return {
+      period: `${from} - ${to}`,
+      columns: [
+        { label: 'Nr.', num: true }, { label: 'Klients' }, { label: 'Statuss' },
+        { label: 'Preču veidi', num: true }, { label: 'Vienības', num: true },
+        { label: 'Izveidots' }, { label: 'Izveidoja' },
+      ],
+      rows: rows.map((r) => [
+        r.id, r.customer, ORDER_STATUSES[r.status], Number(r.lines), Number(r.units),
+        fmtDateTime(r.created_at), r.created_by || '',
+      ]),
+      summary: [
+        { label: 'Pasūtījumi periodā', value: rows.length },
+        { label: 'Vienības kopā', value: sumBy(rows, (r) => Number(r.units)) },
+        ...Object.entries(ORDER_STATUSES).map(([key, label]) => ({ label, value: count(key) })),
+      ],
+    };
+  },
+
   async unplaced() {
     const items = (await loadStock()).filter((i) => i.unplaced > 0);
     return {
@@ -945,14 +1228,7 @@ const reportBuilders = {
   },
 
   async activity(query) {
-    const today = new Date();
-    const to = query.to === undefined ? isoLocal(today) : validDate(query.to);
-    const from = query.from === undefined ? isoLocal(new Date(today.getTime() - 29 * 86400000)) : validDate(query.from);
-    if (!from || !to) throw new HttpError(400, { error: 'Nederīgs datums. Izmantojiet formātu GGGG-MM-DD.' });
-    if (from > to) throw new HttpError(400, { error: 'Sākuma datums nevar būt pēc beigu datuma.' });
-
-    // Beigu datums ir ieskaitīts, tāpēc meklējam līdz nākamās dienas sākumam
-    const toNext = new Date(Date.parse(to + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+    const { from, to, toNext } = parsePeriod(query);
 
     const LIMIT = 1000;
     const [rows] = await pool.execute(
