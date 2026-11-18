@@ -26,7 +26,8 @@ const roleNames = {
 // Katra lapa: adrese, HTML fails un lomas, kurām tā ir atļauta.
 // Lapas, kas vēl nav gatavas, izmanto placeholder.html.
 const pages = [
-  { path: '/produkti/jauns',  file: 'add-product.html', label: 'Pievienot produktu',  roles: ['admin'] },
+  { path: '/produkti/jauns',  file: 'add-product.html', label: 'Pievienot produktu',  roles: ['admin', 'worker'] },
+  { path: '/produkti',        file: 'products.html',    label: 'Produkti',            roles: ['admin', 'worker'] },
   { path: '/lietotaji/jauns', file: 'add-user.html',    label: 'Pievienot lietotāju', roles: ['admin'] },
   { path: '/lietotaji',       file: 'users.html',       label: 'Lietotāji',           roles: ['admin'] },
   { path: '/lietotaji/rediget', file: 'edit-user.html', label: 'Rediģēt lietotāju', roles: ['admin'] },
@@ -37,9 +38,9 @@ const pages = [
 ];
 
 const menuOrder = {
-  admin:  ['/produkti/jauns', '/lietotaji/jauns', '/lietotaji'],
+  admin:  ['/produkti/jauns', '/produkti', '/lietotaji/jauns', '/lietotaji'],
   sorter: ['/izvietot', '/atskaites', '/datu-ievade'],
-  worker: ['/pasutijumi', '/atskaites'],
+  worker: ['/pasutijumi', '/produkti', '/atskaites'],
 };
 
 function menuFor(role) {
@@ -263,7 +264,7 @@ const productRules = [
     .isLength({ max: 500 }).withMessage('Apraksts nedrīkst būt garāks par 500 simboliem.'),
 ];
 
-app.post('/api/products', apiGuard('admin'), verifyCsrf, productRules, async (req, res) => {
+app.post('/api/products', apiGuard('admin', 'worker'), verifyCsrf, productRules, async (req, res) => {
   const result = validationResult(req);
   if (!result.isEmpty()) {
     const errors = {};
@@ -285,6 +286,80 @@ app.post('/api/products', apiGuard('admin'), verifyCsrf, productRules, async (re
     }
     console.error('Produkta pievienošanas kļūda:', err.message);
     res.status(500).json({ error: 'Servera kļūda. Produkts netika saglabāts.' });
+  }
+});
+
+// Preces labošana (administrators un darbinieks). Daudzumu nedrīkst samazināt zem jau
+// izvietotā vai rezervētā daudzuma, lai dati noliktavā paliktu saskaņoti.
+app.put('/api/products/:id', apiGuard('admin', 'worker'), verifyCsrf, productRules, async (req, res) => {
+  const id = parseId(req);
+  if (!id) return res.status(400).json({ error: 'Nederīgs identifikators.' });
+  const errors = validationErrors(req);
+  if (errors) return res.status(400).json({ errors });
+
+  const s = (k) => String(req.body[k] ?? '');
+  const quantity = Number(s('quantity'));
+
+  try {
+    await withTx(async (conn) => {
+      const [cur] = await conn.execute('SELECT id FROM products WHERE id = ? FOR UPDATE', [id]);
+      if (!cur[0]) throw new HttpError(404, { error: 'Prece nav atrasta.' });
+
+      const [placed] = await conn.execute(
+        'SELECT COALESCE(SUM(quantity), 0) AS q FROM placements WHERE product_id = ?', [id]
+      );
+      const [reserved] = await conn.execute(
+        `SELECT COALESCE(SUM(oi.quantity), 0) AS q FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+         WHERE oi.product_id = ? AND o.status IN ('new', 'picking')`, [id]
+      );
+      const minimum = Math.max(Number(placed[0].q), Number(reserved[0].q));
+      if (quantity < minimum) {
+        throw new HttpError(400, {
+          errors: {
+            quantity: 'Daudzums nevar būt mazāks par ' + minimum + ' (izvietots: ' + placed[0].q +
+                      ', rezervēts: ' + reserved[0].q + ').',
+          },
+        });
+      }
+
+      await conn.execute(
+        `UPDATE products SET sku = ?, name = ?, category = ?, quantity = ?, price = ?, description = ? WHERE id = ?`,
+        [s('sku'), s('name'), s('category') || null, quantity, s('price'), s('description') || null, id]
+      );
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ errors: { sku: 'Produkts ar šādu artikula kodu jau eksistē.' } });
+    }
+    sendError(res, err, 'Produkta atjaunošanas kļūda:');
+  }
+});
+
+// Preces dzēšana (tikai administrators). Nedzēš, ja prece ir plauktos vai pasūtījumos.
+app.delete('/api/products/:id', apiGuard('admin'), verifyCsrf, async (req, res) => {
+  const id = parseId(req);
+  if (!id) return res.status(400).json({ error: 'Nederīgs identifikators.' });
+
+  try {
+    await withTx(async (conn) => {
+      const [cur] = await conn.execute('SELECT id FROM products WHERE id = ? FOR UPDATE', [id]);
+      if (!cur[0]) throw new HttpError(404, { error: 'Prece nav atrasta.' });
+
+      const [pl] = await conn.execute('SELECT COUNT(*) AS c FROM placements WHERE product_id = ?', [id]);
+      if (Number(pl[0].c) > 0) {
+        throw new HttpError(409, { error: 'Preci nevar dzēst, kamēr tā ir izvietota plauktos. Vispirms noņemiet to no visām vietām.' });
+      }
+      const [oi] = await conn.execute('SELECT COUNT(*) AS c FROM order_items WHERE product_id = ?', [id]);
+      if (Number(oi[0].c) > 0) {
+        throw new HttpError(409, { error: 'Preci nevar dzēst, jo tā ir iekļauta pasūtījumos.' });
+      }
+      await conn.execute('DELETE FROM products WHERE id = ?', [id]);
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    sendError(res, err, 'Produkta dzēšanas kļūda:');
   }
 });
 
@@ -457,7 +532,7 @@ app.delete('/api/users/:id', apiGuard('admin'), verifyCsrf, async (req, res) => 
 app.get('/api/products', apiGuard('admin', 'worker', 'sorter'), async (req, res) => {
   try {
     const [rows] = await pool.execute(
-      `SELECT p.id, p.sku, p.name, p.category, p.quantity, COALESCE(SUM(pl.quantity), 0) AS placed,
+      `SELECT p.id, p.sku, p.name, p.category, p.quantity, p.price, p.description, COALESCE(SUM(pl.quantity), 0) AS placed,
               (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi JOIN orders o ON o.id = oi.order_id
                WHERE oi.product_id = p.id AND o.status IN ('new', 'picking')) AS reserved
        FROM products p LEFT JOIN placements pl ON pl.product_id = p.id
@@ -466,6 +541,7 @@ app.get('/api/products', apiGuard('admin', 'worker', 'sorter'), async (req, res)
     res.json({
       products: rows.map((r) => ({
         id: r.id, sku: r.sku, name: r.name, category: r.category,
+        price: Number(r.price).toFixed(2), description: r.description || '',
         quantity: r.quantity, placed: Number(r.placed), reserved: Number(r.reserved),
       })),
     });
@@ -878,7 +954,7 @@ app.get('/api/orders', apiGuard(...ORDER_ROLES), async (req, res) => {
   try {
     const [rows] = await pool.execute(
       `SELECT o.id, o.customer, o.status, o.created_at, u.username AS created_by,
-              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS lines,
+              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS line_count,
               (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS units
        FROM orders o LEFT JOIN users u ON u.id = o.created_by
        ${status ? 'WHERE o.status = ?' : ''}
@@ -888,7 +964,7 @@ app.get('/api/orders', apiGuard(...ORDER_ROLES), async (req, res) => {
     res.json({
       orders: rows.map((r) => ({
         id: r.id, customer: r.customer, status: r.status, statusName: ORDER_STATUSES[r.status],
-        createdAt: r.created_at, createdBy: r.created_by, lines: Number(r.lines), units: Number(r.units),
+        createdAt: r.created_at, createdBy: r.created_by, lines: Number(r.line_count), units: Number(r.units),
       })),
     });
   } catch (err) {
@@ -1184,7 +1260,7 @@ const reportBuilders = {
     const { from, to, toNext } = parsePeriod(query);
     const [rows] = await pool.execute(
       `SELECT o.id, o.customer, o.status, o.created_at, u.username AS created_by,
-              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS lines,
+              (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS line_count,
               (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS units
        FROM orders o LEFT JOIN users u ON u.id = o.created_by
        WHERE o.created_at >= ? AND o.created_at < ?
@@ -1201,7 +1277,7 @@ const reportBuilders = {
         { label: 'Izveidots' }, { label: 'Izveidoja' },
       ],
       rows: rows.map((r) => [
-        r.id, r.customer, ORDER_STATUSES[r.status], Number(r.lines), Number(r.units),
+        r.id, r.customer, ORDER_STATUSES[r.status], Number(r.line_count), Number(r.units),
         fmtDateTime(r.created_at), r.created_by || '',
       ]),
       summary: [
