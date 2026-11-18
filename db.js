@@ -25,6 +25,58 @@ async function columnExists(table, column) {
   return Number(rows[0].c) > 0;
 }
 
+async function tableExists(table) {
+  const [rows] = await pool.execute(
+    `SELECT COUNT(*) AS c FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    [table]
+  );
+  return Number(rows[0].c) > 0;
+}
+
+async function rowCount(table) {
+  const [rows] = await pool.execute(`SELECT COUNT(*) AS c FROM \`${table}\``);
+  return Number(rows[0].c);
+}
+
+// Ja datubāzē jau ir cita (nesaderīga) "orders" tabula, to pārdēvē rezerves kopijā,
+// lai varētu izveidot pareizo. Tabulas ar datiem netiek dzēstas.
+async function fixOldOrdersTable() {
+  if (!(await tableExists('orders'))) return;
+
+  for (const col of ['customer', 'note', 'status', 'created_by']) {
+    if (await columnExists('orders', col)) continue;
+
+    for (const child of ['order_status_log', 'order_items']) {
+      if ((await tableExists(child)) && (await rowCount(child)) > 0) {
+        throw new Error(
+          `Tabula "${child}" satur datus un neder jaunajai sistēmai. ` +
+          'Pārdēvējiet vecās pasūtījumu tabulas (orders, order_items, order_status_log) un restartējiet serveri.'
+        );
+      }
+    }
+    await pool.execute('DROP TABLE IF EXISTS order_status_log');
+    await pool.execute('DROP TABLE IF EXISTS order_items');
+    const backup = `orders_backup_${Date.now()}`;
+    await pool.execute(`RENAME TABLE orders TO \`${backup}\``);
+    console.warn(`Atrasta cita "orders" tabula; tā pārdēvēta par "${backup}".`);
+    return;
+  }
+}
+
+// Rezerves tabulām noņem ārējās atslēgas: to nosaukumiem jābūt unikāliem visā datubāzē,
+// citādi jaunā tabula ar tādu pašu atslēgas nosaukumu neizveidojas.
+async function dropBackupForeignKeys() {
+  const [rows] = await pool.execute(
+    `SELECT TABLE_NAME AS t, CONSTRAINT_NAME AS c FROM information_schema.TABLE_CONSTRAINTS
+     WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+       AND TABLE_NAME LIKE 'orders\\_backup\\_%'`
+  );
+  for (const r of rows) {
+    await pool.execute(`ALTER TABLE \`${r.t}\` DROP FOREIGN KEY \`${r.c}\``);
+  }
+}
+
 // Izveido tabulas, ja to vēl nav, un atjauno vecāku users tabulas versiju
 async function init() {
   await pool.execute(`
@@ -125,6 +177,8 @@ async function init() {
   `);
 
   // Pasūtījumi
+  await fixOldOrdersTable();
+  await dropBackupForeignKeys();
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS orders (
       id         INT AUTO_INCREMENT PRIMARY KEY,
